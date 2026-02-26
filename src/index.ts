@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { PolicyClient } from "@shll/policy-sdk";
-import type { Action } from "@shll/policy-sdk";
+import { PolicyClient } from "shll-policy-sdk";
+import type { Action } from "shll-policy-sdk";
 import {
     createPublicClient,
     createWalletClient,
