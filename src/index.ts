@@ -438,18 +438,31 @@ tokensCmd.action(() => {
     output({ status: "success", tokens });
 });
 
-// ── Subcommand: init (one-click onboarding) ─────────────
+// ── Subcommand: init (DEPRECATED — uses same key for owner+operator) ──
 const initCmd = new Command("init")
-    .description("One-click setup: rent an Agent, authorize self as operator, and fund the vault")
+    .description("[DEPRECATED] One-click setup — uses same key as owner AND operator. Use setup-guide instead.")
     .requiredOption("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)")
     .requiredOption("-d, --days <number>", "Number of days to rent")
     .option("-f, --fund <bnb>", "BNB to deposit into vault (human-readable, e.g. 0.1)", "0")
+    .option("--i-understand-the-risk", "Acknowledge the security risk of using same key for owner and operator")
     .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
     .option("--listing-manager <address>", "ListingManagerV2 address", DEFAULT_LISTING_MANAGER)
     .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA);
 
 initCmd.action(async (opts) => {
     try {
+        // Deprecation guard
+        if (!opts.iUnderstandTheRisk) {
+            output({
+                status: "error",
+                message: "⚠️  DEPRECATED: 'init' uses the same private key as both owner AND operator. " +
+                    "If this key is leaked (e.g. via AI prompt injection), an attacker can withdraw ALL vault funds. " +
+                    "Use 'setup-guide' instead for a secure dual-wallet setup. " +
+                    "If you understand the risk and still want to proceed, add --i-understand-the-risk.",
+            });
+            process.exit(1);
+        }
+
         // Validate private key
         if (!process.env.RUNNER_PRIVATE_KEY) {
             output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
@@ -1227,9 +1240,138 @@ configCmd.action(async (opts) => {
     }
 });
 
+// -- Subcommand: setup-guide (secure dual-wallet onboarding) ------
+const setupGuideCmd = new Command("setup-guide")
+    .description("Output step-by-step instructions for secure dual-wallet agent setup")
+    .requiredOption("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)")
+    .requiredOption("-d, --days <number>", "Number of days to rent")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
+    .option("--listing-manager <address>", "ListingManagerV2 address", DEFAULT_LISTING_MANAGER)
+    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA);
+
+setupGuideCmd.action(async (opts) => {
+    try {
+        // Get operator address from RUNNER_PRIVATE_KEY
+        const pk = process.env.RUNNER_PRIVATE_KEY;
+        let operatorAddress: string;
+        if (pk) {
+            const account = privateKeyToAccount(toHex(pk) as Hex);
+            operatorAddress = account.address;
+        } else {
+            output({
+                status: "error",
+                message: "RUNNER_PRIVATE_KEY not set. Run 'generate-wallet' first to create an operator wallet, then set RUNNER_PRIVATE_KEY.",
+            });
+            process.exit(1);
+            return;
+        }
+
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const listingManagerAddr = toHex(opts.listingManager || DEFAULT_LISTING_MANAGER) as Address;
+        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
+        const listingId = opts.listingId as string;
+        const daysToRent = Number(opts.days);
+
+        // Query listing to calculate rent cost
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+        let rentCost = "unknown";
+        let priceInfo = "";
+        try {
+            const listing = await publicClient.readContract({
+                address: listingManagerAddr,
+                abi: LISTING_MANAGER_ABI,
+                functionName: "listings",
+                args: [listingId as Hex],
+            });
+            const [, , , pricePerDay, minDays, active] = listing;
+            if (!active) {
+                output({ status: "error", message: "Listing is not active" });
+                process.exit(1);
+            }
+            if (daysToRent < minDays) {
+                output({ status: "error", message: `Minimum rental is ${minDays} days, you requested ${daysToRent}` });
+                process.exit(1);
+            }
+            const totalRent = BigInt(pricePerDay) * BigInt(daysToRent);
+            rentCost = `${(Number(totalRent) / 1e18).toFixed(6)} BNB`;
+            priceInfo = ` (${totalRent.toString()} wei)`;
+        } catch {
+            rentCost = "unable to query — check listing-id";
+        }
+
+        // Calculate operator expiry timestamp
+        const expiryTimestamp = Math.floor(Date.now() / 1000) + daysToRent * 86400;
+
+        // Build shll.run setup URL
+        const setupUrl = `https://shll.run/setup?operator=${operatorAddress}&listing=${encodeURIComponent(listingId)}&days=${daysToRent}`;
+
+        output({
+            status: "guide",
+            securityModel: "DUAL-WALLET: Your wallet (owner) stays offline. AI only uses the operator wallet, which CANNOT withdraw vault funds.",
+            operatorAddress,
+            setupUrl,
+            rentCost: `${rentCost}${priceInfo}`,
+            steps: [
+                {
+                    step: 1,
+                    title: "Open SHLL Setup Page",
+                    action: `Open ${setupUrl} in your browser`,
+                    note: "Connect YOUR wallet (MetaMask/WalletConnect). This is your owner wallet — keep it safe and offline after setup.",
+                },
+                {
+                    step: 2,
+                    title: "Rent Agent",
+                    action: "Click 'Rent Agent' and confirm the transaction",
+                    fallback: {
+                        method: "BscScan (manual)",
+                        contract: listingManagerAddr,
+                        function: "rentToMintWithParams(bytes32,uint32,uint32,uint16,bytes)",
+                        args: [listingId, daysToRent, 1, 1, "0x01"],
+                        value: rentCost,
+                    },
+                },
+                {
+                    step: 3,
+                    title: "Authorize Operator",
+                    action: "Click 'Authorize Operator' — this gives the AI wallet permission to trade within PolicyGuard safety limits",
+                    note: `Operator address: ${operatorAddress}`,
+                    fallback: {
+                        method: "BscScan (manual)",
+                        contract: nfaAddr,
+                        function: "setOperator(uint256,address,uint64)",
+                        args: ["<tokenId from step 2>", operatorAddress, expiryTimestamp],
+                    },
+                },
+                {
+                    step: 4,
+                    title: "Fund Vault (optional)",
+                    action: "Deposit BNB into the vault for trading",
+                    fallback: {
+                        method: "BscScan (manual)",
+                        contract: nfaAddr,
+                        function: "fundAgent(uint256)",
+                        args: ["<tokenId>"],
+                        value: "amount of BNB to deposit",
+                    },
+                },
+                {
+                    step: 5,
+                    title: "Tell AI your token-id",
+                    action: "Come back and tell the AI your token-id number. The AI will verify your portfolio and you're ready to trade.",
+                },
+            ],
+        });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
 // -- Subcommand: generate-wallet ---------------------------------
 const genWalletCmd = new Command("generate-wallet")
-    .description("Generate a new BSC wallet (address + private key)")
+    .description("Generate a new operator wallet (address + private key) for AI to use")
     .action(() => {
         const pk = generatePrivateKey();
         const account = privateKeyToAccount(pk);
@@ -1237,7 +1379,11 @@ const genWalletCmd = new Command("generate-wallet")
             status: "success",
             address: account.address,
             privateKey: pk,
-            note: "SAVE THIS PRIVATE KEY SECURELY. This wallet is for paying gas fees (~$0.01/tx). Send ~$1 of BNB to the address above, then set RUNNER_PRIVATE_KEY to the privateKey value.",
+            note: "SAVE THIS PRIVATE KEY SECURELY. This is the OPERATOR wallet — it can only trade within PolicyGuard limits. " +
+                "It CANNOT withdraw vault funds or transfer your Agent NFT. " +
+                "Send ~$1 of BNB here for gas fees, then set RUNNER_PRIVATE_KEY to this privateKey value.",
+            securityReminder: "Use a SEPARATE wallet (MetaMask, hardware wallet) as the owner to rent the agent and fund the vault. " +
+                "Run 'setup-guide' for step-by-step instructions.",
         });
     });
 
@@ -1286,6 +1432,7 @@ program.addCommand(unwrapCmd);
 program.addCommand(transferCmd);
 program.addCommand(policiesCmd);
 program.addCommand(configCmd);
+program.addCommand(setupGuideCmd);
 program.addCommand(genWalletCmd);
 program.addCommand(balanceCmd);
 program.parse(process.argv);

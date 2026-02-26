@@ -13,13 +13,17 @@ npm install -g shll-skills
 ## Quick Start
 
 ```bash
-export RUNNER_PRIVATE_KEY="0x..."
+# 1. Generate an operator wallet (hot wallet for AI)
+shll-run generate-wallet
+# -> Outputs address + private key
 
-# 1. One-click onboarding: rent agent + authorize + fund vault
-shll-run init --listing-id 0xABC...DEF --days 30 --fund 0.5
-# -> Agent #5 is ready!
+export RUNNER_PRIVATE_KEY="0x...(operator key)..."
 
-# 2. Trade
+# 2. Get setup instructions (user completes on shll.run with their OWN wallet)
+shll-run setup-guide --listing-id 0xABC...DEF --days 30
+# -> Outputs shll.run link for rent + authorize + fund
+
+# 3. After setup, trade with your token-id
 shll-run swap --from BNB --to USDC --amount 0.1 --token-id 5
 ```
 
@@ -77,18 +81,29 @@ AI Agent -> CLI command -> PolicyClient.validate() -> PolicyGuard (on-chain) -> 
 3. If approved, `AgentNFA.execute()` routes through PolicyGuard -> vault
 4. PolicyGuard enforces: spending limits, cooldowns, DEX whitelist, receiver guard
 
-## Security
+## Security: Dual-Wallet Architecture
 
-- **On-chain enforcement** — PolicyGuard validates every transaction, not the AI
-- **Vault isolation** — Operator key cannot directly access vault funds
-- **Renter-only config** — Risk limits can only be tightened, never loosened
-- **Safe by default** — Unknown selectors, targets, or recipients are rejected
+SHLL enforces **separation of owner and operator wallets**:
+
+| | Owner Wallet | Operator Wallet (RUNNER_PRIVATE_KEY) |
+|---|---|---|
+| **Who holds it** | User (MetaMask/hardware) | AI agent |
+| **Can trade** | — | ✅ Within PolicyGuard limits |
+| **Can withdraw vault** | ✅ | ❌ |
+| **Can transfer NFT** | ✅ | ❌ |
+| **Risk if leaked** | 🚨 Full vault access | ⚠️ Limited to policy-allowed trades |
+
+**Additional on-chain enforcement:**
+- PolicyGuard validates every transaction, not the AI
+- Vault isolation — operator key cannot directly access vault funds
+- Risk limits can only be tightened, never loosened
+- Unknown selectors, targets, or recipients are rejected
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `RUNNER_PRIVATE_KEY` | Yes | Gas-paying wallet key (~$1 BNB is enough) |
+| `RUNNER_PRIVATE_KEY` | Yes | Operator wallet key (hot wallet, ~$1 BNB for gas) |
 | `RPC_URL` | No | BSC RPC (default: public endpoint) |
 | `NFA_ADDRESS` | No | AgentNFA contract override |
 | `GUARD_ADDRESS` | No | PolicyGuard contract override |
