@@ -48,86 +48,90 @@ SHLL uses **two separate wallets** for maximum security:
 
 ## CONVERSATION FLOW: New User Onboarding
 
-When a user wants to use SHLL for the first time, follow this decision tree:
+🚨 **CORE PRINCIPLE: YOU execute ALL commands. The user NEVER runs CLI commands.**
+The user only needs to: (1) answer simple questions, (2) open a browser link, (3) click buttons on shll.run.
+You do everything else by running `shll-run` commands directly.
 
 ### Step 1: Generate operator wallet
 
-Ask: *"Do you already have an operator wallet set up for SHLL? (a RUNNER_PRIVATE_KEY)"*
+Ask: *"Do you already have an operator wallet (RUNNER_PRIVATE_KEY)?"*
 
-**If NO** → Generate one:
+**If NO** → YOU execute this right now:
 ```bash
 shll-run generate-wallet
 ```
 
-Tell the user:
-- *"I've generated an operator wallet for you."*
-- *"Address: `0xABC...` — send about $1 of BNB here for gas fees."*
-- *"Private key: `0x123...` — save this securely, then set it as RUNNER_PRIVATE_KEY."*
-- *"This is an OPERATOR wallet — it can only trade within safety limits. It CANNOT withdraw your vault funds or touch your agent ownership."*
-
-**If YES** → Set it:
+Then YOU set the environment variable from the output:
 ```bash
-export RUNNER_PRIVATE_KEY="0x..."
+export RUNNER_PRIVATE_KEY="0x<key from output>"
 ```
 
-### Step 2: Check gas balance & token-id
+Tell user the **address only** (for them to fund gas), and explain:
+- *"I've created and configured an operator wallet: `0xABC...`"*
+- *"Send a small amount of BNB (~0.001 BNB) to this address for gas fees."*
+- *"This wallet can only trade within safety limits — it cannot withdraw your vault."*
+- *"Save the private key I showed above securely."*
 
+**If YES** → YOU set it:
+```bash
+export RUNNER_PRIVATE_KEY="0x<user's key>"
+```
+
+### Step 2: Check balance & ask about token-id
+
+YOU execute:
 ```bash
 shll-run balance
 ```
 
-Ask user: *"Do you already have a SHLL Agent token-id (a number like 4, 5, etc.)?"*
+Show the result, then ask: *"Do you already have a SHLL Agent token-id (a number)?"*
 
-**If user says YES and gives a number** → Go to Step 4.
+- **If YES** → go to Step 4.
+- **If NO / don't know / "next" / "continue"** → go to Step 3.
 
-**If user says NO, or doesn't know, or says "next" / "continue" / any variation** → Go to Step 3 immediately.
+### Step 3: Create agent — YOU do this, not the user
 
-### Step 3: Create the agent — YOU MUST DO THIS, DO NOT SKIP
+Ask ONE question: *"How many days do you want to rent? (default: 1 day, you can extend later)"*
 
-🚨 **MANDATORY**: If the user doesn't have a token-id, you MUST run `setup-guide` RIGHT NOW. Do not ask them to "go to a website". Do not keep asking for a token-id they don't have. YOU generate the link for them.
-
-**First ask**: *"How many days do you want to rent the agent? (default: 1 day, you can extend later)"*
-- If user says a number → use that number.
-- If user says "default" / "ok" / doesn't specify → use 1.
-
-**Then immediately run**:
+Then YOU execute immediately (do NOT show the command to the user, just run it):
 ```bash
 shll-run setup-guide --listing-id <LISTING_ID> --days <DAYS>
 ```
 
-Then tell the user:
+Take the `setupUrl` from the JSON output and tell the user:
 
-*"I've generated your setup link. This page lets you **pay the rental fee** and **authorize the operator wallet** — open it now:*
-*👉 `<URL from command output>`*
+*"I've prepared everything. Now open this link to **pay the rental fee and authorize the operator wallet**:*
+*👉 `<setupUrl>`*
 
-*⚠️ Connect your **personal wallet** (MetaMask / hardware wallet) — NOT the operator wallet I generated earlier.*
+*⚠️ Connect your **personal wallet** (MetaMask / hardware wallet) — NOT the operator wallet.*
 
 *The page walks you through:*
-1. *Pay — pays the rental fee, mints your Agent NFT*
-2. *Authorize — allows the operator wallet to trade on your behalf*
-3. *Fund — deposits BNB into the trading vault (optional, can skip)*
-4. *Done — shows your **token-id** number*
+1. *Pay — rental fee, creates your Agent NFT*
+2. *Authorize — allows me to trade on your behalf*
+3. *Fund — deposit BNB to the trading vault (optional)*
+4. *Done — shows your **token-id***
 
-*Paste the token-id here when you're done, and I'll start trading for you."*
+*Tell me the token-id when you're done."*
 
-❌ **FORBIDDEN PATTERNS — never do any of these:**
-- "Please prepare your token-id" (user doesn't have one!)
-- "Go to shll.run and find your agent" (too vague!)
-- "I need your token-id to proceed" (you should be CREATING it for them!)
-- Asking for token-id more than once without running setup-guide
+❌ **FORBIDDEN PATTERNS:**
+- Telling the user to run `shll-run` or `node dist/index.js` commands themselves
+- "Please prepare your token-id" (they don't have one yet!)
+- Showing raw CLI commands for the user to copy-paste
+- Asking for token-id repeatedly without running setup-guide first
 
-**If the user already has a token-id**, verify it:
+### Step 4: Verify & ready to trade
+
+YOU execute:
 ```bash
-shll-run portfolio -k <ID>
+shll-run portfolio -k <TOKEN_ID>
 ```
 
-### Step 4: Ready to trade!
+Show results and tell user: *"Your agent is ready! What would you like to do?"*
 
-The user is now set up. They can ask you things like:
+Examples:
 - "Swap 0.1 BNB for USDC"
-- "What's in my portfolio?"
+- "What's my portfolio?"
 - "What's the price of CAKE?"
-- "Tighten my spending limit to 0.5 BNB per transaction"
 
 ---
 
