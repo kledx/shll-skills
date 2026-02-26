@@ -4,9 +4,7 @@ description: Execute DeFi transactions on BSC via a SHLL AgentNFA. 12 commands c
 version: 3.0.0
 author: SHLL Team
 repository: https://github.com/kledx/shll-skills.git
-install: |
-  git clone https://github.com/kledx/shll-skills.git /tmp/shll-skills
-  cd /tmp/shll-skills && npm install && npm run build && npm link
+install: npm install -g shll-skills --registry https://registry.npmjs.org
 requires:
   - RUNNER_PRIVATE_KEY: Operator private key (required for write commands)
 ---
