@@ -20,6 +20,7 @@ const DEFAULT_NFA = "0xe98dcdbf370d7b52c9a2b88f79bef514a5375a2b";
 const DEFAULT_GUARD = "0x25d17ea0e3bcb8ca08a2bfe917e817afc05dbbb3";
 const DEFAULT_RPC = "https://bsc-dataseed1.binance.org";
 const DEFAULT_LISTING_MANAGER = "0x322E7b1DaefE32E3D25defEA731C6384425E5A9f";
+const DEFAULT_LISTING_ID = "0x792d9b08749fd9739b7e57217daa08a673042fe9e1e1c35545e99acb72c12186";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
 
@@ -1240,11 +1241,68 @@ configCmd.action(async (opts) => {
     }
 });
 
+// -- Subcommand: listings (query available agent templates) --------
+const DEFAULT_INDEXER = "https://indexer.shll.run";
+
+const listingsCmd = new Command("listings")
+    .description("List all available agent templates for rent")
+    .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER)
+    .action(async (opts) => {
+        try {
+            const indexerUrl = opts.indexer || DEFAULT_INDEXER;
+            const res = await fetch(`${indexerUrl}/api/listings`);
+            if (!res.ok) {
+                output({ status: "error", message: `Indexer returned ${res.status}` });
+                process.exit(1);
+            }
+            const data = await res.json() as {
+                items: Array<{
+                    id: string;
+                    agentName: string;
+                    agentType: string;
+                    pricePerDay: string;
+                    minDays: number;
+                    active: boolean;
+                    nfa: string;
+                    tokenId: string;
+                    owner: string;
+                }>;
+                count: number;
+            };
+
+            const available = data.items.filter((l) => l.active);
+            if (available.length === 0) {
+                output({ status: "success", message: "No active listings found.", listings: [] });
+                return;
+            }
+
+            const listings = available.map((l) => ({
+                listingId: l.id,
+                name: l.agentName || "Unnamed Agent",
+                type: l.agentType || "unknown",
+                pricePerDayBNB: (Number(l.pricePerDay) / 1e18).toFixed(6),
+                minDays: l.minDays,
+                nfa: l.nfa,
+            }));
+
+            output({
+                status: "success",
+                count: listings.length,
+                listings,
+                hint: "Use the listingId with setup-guide: shll-run setup-guide --listing-id <ID> --days <N>",
+            });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            output({ status: "error", message });
+            process.exit(1);
+        }
+    });
+
 // -- Subcommand: setup-guide (secure dual-wallet onboarding) ------
 const setupGuideCmd = new Command("setup-guide")
     .description("Output step-by-step instructions for secure dual-wallet agent setup")
-    .requiredOption("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)")
-    .requiredOption("-d, --days <number>", "Number of days to rent")
+    .option("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)", DEFAULT_LISTING_ID)
+    .option("-d, --days <number>", "Number of days to rent", "1")
     .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
     .option("--listing-manager <address>", "ListingManagerV2 address", DEFAULT_LISTING_MANAGER)
     .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA);
@@ -1433,6 +1491,7 @@ program.addCommand(transferCmd);
 program.addCommand(policiesCmd);
 program.addCommand(configCmd);
 program.addCommand(setupGuideCmd);
+program.addCommand(listingsCmd);
 program.addCommand(genWalletCmd);
 program.addCommand(balanceCmd);
 program.parse(process.argv);

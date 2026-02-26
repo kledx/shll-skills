@@ -91,11 +91,23 @@ Show the result, then ask: *"Do you already have a SHLL Agent token-id (a number
 
 ### Step 3: Create agent — YOU do this, not the user
 
-Ask ONE question: *"How many days do you want to rent? (default: 1 day, you can extend later)"*
-
-Then YOU execute immediately (do NOT show the command to the user, just run it):
+**3a.** YOU query available agent templates:
 ```bash
-shll-run setup-guide --listing-id <LISTING_ID> --days <DAYS>
+shll-run listings
+```
+
+Show the user a clear list:
+*"Here are the available agents:"*
+
+| # | Name | Type | Price/day | Min days |
+|---|------|------|-----------|----------|
+| 1 | LLM Trader Agent | llm_trader | 0.0005 BNB | 1 |
+
+*"Which one do you want? And how many days? (default: 1 day, can extend later)"*
+
+**3b.** Once user picks, YOU execute:
+```bash
+shll-run setup-guide --listing-id <SELECTED_ID> --days <DAYS>
 ```
 
 Take the `setupUrl` from the JSON output and tell the user:
@@ -142,7 +154,8 @@ Examples:
 |---------|-------------|
 | `shll-run generate-wallet` | Create a new operator wallet (address + private key) |
 | `shll-run balance` | Check operator wallet BNB balance |
-| `shll-run setup-guide -l <LISTING> -d <DAYS>` | Output setup instructions + shll.run link for secure onboarding |
+| `shll-run listings` | List all available agent templates (name, type, price) |
+| `shll-run setup-guide [-l <LISTING>] [-d <DAYS>]` | Output setup link for onboarding (defaults: auto listing-id, 1 day) |
 | ~~`shll-run init`~~ | **DEPRECATED** — insecure single-wallet mode |
 
 ### Trading
