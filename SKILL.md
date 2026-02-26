@@ -1,8 +1,14 @@
 ---
 name: shll-onchain-runner
-description: Safely execute DeFi transactions on BSC via a SHLL AgentNFA. Supports token swaps on PancakeSwap with automatic routing, price quotes, slippage protection, and auto-approve. All transactions are validated by the on-chain PolicyGuard.
-version: 2.0.0
+description: Execute DeFi transactions on BSC via a SHLL AgentNFA. 12 commands covering onboarding (init), trading (swap, wrap, unwrap, transfer), market data (portfolio, price, search, tokens), risk management (policies, config), and raw execution. All write operations validated by on-chain PolicyGuard.
+version: 3.0.0
 author: SHLL Team
+repository: https://github.com/kledx/shll-skills.git
+install: |
+  git clone https://github.com/kledx/shll-skills.git /tmp/shll-skills
+  cd /tmp/shll-skills && npm install && npm run build && npm link
+requires:
+  - RUNNER_PRIVATE_KEY: Operator private key (required for write commands)
 ---
 
 # SHLL On-Chain Runner
