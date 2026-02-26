@@ -1411,7 +1411,7 @@ const balanceCmd = new Command("balance")
                 sufficient: enough,
                 note: enough
                     ? "Wallet has enough BNB for gas fees."
-                    : "Wallet needs more BNB. Send at least $1 of BNB to this address for gas fees.",
+                    : `Wallet needs more BNB for gas. Current: ${humanBal} BNB, minimum recommended: 0.001 BNB (~$0.60). Send a small amount of BNB (BSC/BEP-20) to this address.`,
             });
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : "Unknown error";
