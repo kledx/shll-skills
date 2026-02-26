@@ -1,6 +1,6 @@
 {
     "name": "shll-skills",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "SHLL Agent Runtime Skill for OpenClaw",
     "main": "dist/index.js",
     "bin": {

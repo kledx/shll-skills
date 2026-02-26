@@ -76,39 +76,44 @@ export RUNNER_PRIVATE_KEY="0x..."
 shll-run balance
 ```
 
-If `sufficient: false`, reply with **both** items in one message:
+Reply with **both** items in one message (don't wait for balance before asking about token-id):
 
-*"Two things to do in parallel (while we wait for gas, let's also set up your agent):*
+*"Here's your operator wallet status: [balance result].*
 
-*1. **Fund gas:** Send at least $1 of BNB (BSC/BEP-20) to your operator wallet `<address>`. You can withdraw from Binance, OKX, or any exchange to BSC mainnet.*
-
-*2. **Get your token-id:** Do you already have a SHLL Agent token-id?*
-   - *If YES: tell me the number.*
-   - *If NO: I'll help you create one in the next step — it takes about 2 minutes."*
+*While you fund gas, let's also set up your agent — do you already have a SHLL Agent (a token-id number)?*
+- *If YES: tell me the number.*
+- *If NO: no worries, I'll create one for you right now. **How many days do you want to rent?** (default: 30 days)"*
 
 ⚠️ **Do NOT just say "prepare your token-id" without explaining what it is or how to get one.**
-Token-id = your SHLL Agent NFT number on BSC. New users won't have one yet.
+Token-id = your SHLL Agent NFT number. New users won't have one yet.
 
-### Step 3: Set up agent (user does this on shll.run)
+### Step 3: Create agent for the user — BE PROACTIVE
 
-**If the user doesn't have a token-id**, guide them to create one:
+**If the user doesn't have a token-id:**
 
+1. **Ask the user ONE question**: *"How many days do you want to rent? (e.g. 30)"*
+   - If user already said a number, skip asking.
+
+2. **Run `setup-guide` immediately** (don't wait for them to go find a website):
 ```bash
-shll-run setup-guide --listing-id <LISTING_ID> --days 30
+shll-run setup-guide --listing-id <LISTING_ID> --days <DAYS_USER_SAID>
 ```
 
-This outputs a link to https://shll.run/setup. Tell the user step-by-step:
+3. **Give the user the exact link** from the output and walk them through it:
+   *"I've prepared your setup link — open it now:*
+   *👉 `<URL from setup-guide output>`*
 
-1. *"Open this link in your browser: `<URL>`"*
-2. *"Connect YOUR personal wallet (MetaMask / WalletConnect) — ⚠️ NOT the operator wallet I generated. Use the wallet you normally hold your assets in."*
-3. *"Follow the 4 steps on the page:*
-   - *Step 1: Rent — pays the rental fee, creates your Agent NFT*
-   - *Step 2: Authorize — grants trading permission to the operator wallet*
-   - *Step 3: Fund — deposits BNB into the agent's trading vault*
-   - *Step 4: Done — shows your **token-id***"
-4. *"When you see the 'Setup Complete' screen, tell me the token-id number (e.g. '5')."*
+   *Important: connect your **personal wallet** (MetaMask / hardware wallet) — NOT the operator wallet I generated.*
 
-**If the user already has a token-id**, verify it:
+   *The page will guide you through 4 quick steps:*
+   1. *Rent — pays rental fee, creates your Agent*
+   2. *Authorize — grants this operator wallet trading permission*
+   3. *Fund — deposits BNB into the trading vault*
+   4. *Done — shows your **token-id***
+
+   *When you see the token-id number on the 'Setup Complete' screen, paste it here and I'll start trading for you."*
+
+**If the user already has a token-id**, verify it immediately:
 ```bash
 shll-run portfolio -k <ID>
 ```
