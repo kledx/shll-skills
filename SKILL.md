@@ -70,35 +70,45 @@ Tell the user:
 export RUNNER_PRIVATE_KEY="0x..."
 ```
 
-### Step 2: Check gas wallet balance
+### Step 2: Check gas balance & ask about token-id
 
 ```bash
 shll-run balance
 ```
 
-If `sufficient: false`, tell the user:
-*"Your operator wallet needs more BNB for gas fees. Send at least $1 of BNB to `<address>`. You can buy BNB on Binance, OKX, or any exchange and withdraw to BSC (BEP-20)."*
+If `sufficient: false`, reply with **both** items in one message:
 
-Wait until balance is sufficient.
+*"Two things to do in parallel (while we wait for gas, let's also set up your agent):*
 
-### Step 3: Set up agent (user does this themselves)
+*1. **Fund gas:** Send at least $1 of BNB (BSC/BEP-20) to your operator wallet `<address>`. You can withdraw from Binance, OKX, or any exchange to BSC mainnet.*
 
-Ask: *"Do you already have a SHLL Agent? (a token-id number)"*
+*2. **Get your token-id:** Do you already have a SHLL Agent token-id?*
+   - *If YES: tell me the number.*
+   - *If NO: I'll help you create one in the next step — it takes about 2 minutes."*
 
-**If NO** → Guide them to set up via shll.run:
+⚠️ **Do NOT just say "prepare your token-id" without explaining what it is or how to get one.**
+Token-id = your SHLL Agent NFT number on BSC. New users won't have one yet.
+
+### Step 3: Set up agent (user does this on shll.run)
+
+**If the user doesn't have a token-id**, guide them to create one:
+
 ```bash
 shll-run setup-guide --listing-id <LISTING_ID> --days 30
 ```
 
-This outputs a link to https://shll.run/setup with pre-filled parameters. Tell the user:
-1. *"Open the setup link in your browser."*
-2. *"Connect YOUR personal wallet (MetaMask, WalletConnect) — this becomes the owner wallet."*
-3. *"Follow the steps to: rent an agent → authorize the operator wallet → fund the vault."*
-4. *"When done, tell me your token-id number."*
+This outputs a link to https://shll.run/setup. Tell the user step-by-step:
 
-**⚠️ NEVER use `init` for new users.** The `init` command is deprecated because it uses the same key for owner and operator, which is a security risk.
+1. *"Open this link in your browser: `<URL>`"*
+2. *"Connect YOUR personal wallet (MetaMask / WalletConnect) — ⚠️ NOT the operator wallet I generated. Use the wallet you normally hold your assets in."*
+3. *"Follow the 4 steps on the page:*
+   - *Step 1: Rent — pays the rental fee, creates your Agent NFT*
+   - *Step 2: Authorize — grants trading permission to the operator wallet*
+   - *Step 3: Fund — deposits BNB into the agent's trading vault*
+   - *Step 4: Done — shows your **token-id***"
+4. *"When you see the 'Setup Complete' screen, tell me the token-id number (e.g. '5')."*
 
-**If YES** → Verify:
+**If the user already has a token-id**, verify it:
 ```bash
 shll-run portfolio -k <ID>
 ```
