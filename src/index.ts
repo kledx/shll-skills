@@ -12,7 +12,7 @@ import {
     type Address,
     type Hex,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { bsc } from "viem/chains";
 
 // ── BSC Mainnet defaults ────────────────────────────────
@@ -1227,6 +1227,53 @@ configCmd.action(async (opts) => {
     }
 });
 
+// -- Subcommand: generate-wallet ---------------------------------
+const genWalletCmd = new Command("generate-wallet")
+    .description("Generate a new BSC wallet (address + private key)")
+    .action(() => {
+        const pk = generatePrivateKey();
+        const account = privateKeyToAccount(pk);
+        output({
+            status: "success",
+            address: account.address,
+            privateKey: pk,
+            note: "SAVE THIS PRIVATE KEY SECURELY. This wallet is for paying gas fees (~$0.01/tx). Send ~$1 of BNB to the address above, then set RUNNER_PRIVATE_KEY to the privateKey value.",
+        });
+    });
+
+// -- Subcommand: balance (gas wallet) ----------------------------
+const balanceCmd = new Command("balance")
+    .description("Check BNB balance of the gas-paying wallet (RUNNER_PRIVATE_KEY)")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
+    .action(async (opts) => {
+        try {
+            const pk = process.env.RUNNER_PRIVATE_KEY;
+            if (!pk) {
+                output({ status: "error", message: "RUNNER_PRIVATE_KEY not set. Run `generate-wallet` first to create one." });
+                process.exit(1);
+            }
+            const account = privateKeyToAccount(toHex(pk) as Hex);
+            const rpcUrl = opts.rpc || DEFAULT_RPC;
+            const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+            const bal = await publicClient.getBalance({ address: account.address });
+            const humanBal = (Number(bal) / 1e18).toFixed(6);
+            const enough = Number(bal) > 1e15; // > 0.001 BNB
+            output({
+                status: "success",
+                address: account.address,
+                balanceBNB: humanBal,
+                sufficient: enough,
+                note: enough
+                    ? "Wallet has enough BNB for gas fees."
+                    : "Wallet needs more BNB. Send at least $1 of BNB to this address for gas fees.",
+            });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            output({ status: "error", message });
+            process.exit(1);
+        }
+    });
+
 program.addCommand(swapCmd);
 program.addCommand(rawCmd);
 program.addCommand(tokensCmd);
@@ -1239,4 +1286,7 @@ program.addCommand(unwrapCmd);
 program.addCommand(transferCmd);
 program.addCommand(policiesCmd);
 program.addCommand(configCmd);
+program.addCommand(genWalletCmd);
+program.addCommand(balanceCmd);
 program.parse(process.argv);
+
