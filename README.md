@@ -1,73 +1,91 @@
-# SHLL OpenClaw Skill (@shll/openclaw-skill)
+# SHLL Skills — AI Agent DeFi Toolkit on BSC
 
-A native [OpenClaw](https://openclaw.ai) skill for the SHLL Agent Protocol. Execute DeFi transactions on BSC securely — every action goes through PolicyGuard.
+A CLI toolkit that gives **any AI agent** (OpenClaw, Claude, Codex, ChatGPT, etc.) the ability to execute DeFi operations on BSC Mainnet securely. All transactions are validated by the on-chain PolicyGuard — even if the AI hallucinates, the contract rejects unsafe operations.
 
-## 📦 Installation
+## 📦 Install
 
 ```bash
-cd repos/shll-openclaw-skill
-npm install && npm run build
-npm link                          # registers `shll-onchain-runner` CLI
-cp .env.example .env              # edit with your private key
-export RUNNER_PRIVATE_KEY="0x..."  # operator key
+npm install -g shll-skills
 ```
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. One-click onboarding: rent + authorize + fund
+export RUNNER_PRIVATE_KEY="0x..."
+
+# 1. One-click onboarding: rent agent + authorize + fund vault
 shll-onchain-runner init --listing-id 0xABC...DEF --days 30 --fund 0.5
 # → Agent #5 is ready!
 
-# 2. Start trading
+# 2. Trade
 shll-onchain-runner swap --from BNB --to USDC --amount 0.1 --token-id 5
 ```
 
-## 📋 Full Command Reference
+## 📋 Commands
 
 ### Onboarding
-| Command | Description |
-|---------|-------------|
-| `init --listing-id <ID> --days <N> [--fund <BNB>]` | Rent agent + authorize + fund vault |
+```bash
+shll-onchain-runner init --listing-id <BYTES32> --days <N> [--fund <BNB>]
+```
 
 ### Trading & Asset Management
-| Command | Description |
-|---------|-------------|
-| `swap --from <TOKEN> --to <TOKEN> --amount <N> -k <ID>` | Token swap via PancakeSwap V2 |
-| `wrap --amount <BNB> -k <ID>` | BNB → WBNB |
-| `unwrap --amount <BNB> -k <ID>` | WBNB → BNB |
-| `transfer --token <SYM> --amount <N> --to <ADDR> -k <ID>` | Transfer from vault |
-| `raw --target <ADDR> --data <HEX> -k <ID>` | Raw calldata execution |
+```bash
+shll-onchain-runner swap --from <TOKEN> --to <TOKEN> --amount <N> -k <ID> [--slippage <PERCENT>]
+shll-onchain-runner wrap --amount <BNB> -k <ID>         # BNB → WBNB
+shll-onchain-runner unwrap --amount <BNB> -k <ID>       # WBNB → BNB
+shll-onchain-runner transfer --token <SYM> --amount <N> --to <ADDR> -k <ID>
+shll-onchain-runner raw --target <ADDR> --data <HEX> -k <ID>
+```
 
 ### Market Data (read-only, no key needed)
-| Command | Description |
-|---------|-------------|
-| `portfolio -k <ID>` | Vault holdings + USD values |
-| `price --token <SYM>` | Real-time price from DexScreener |
-| `search --query <TEXT>` | Find token by name on BSC |
-| `tokens` | List known token addresses |
+```bash
+shll-onchain-runner portfolio -k <ID>        # Vault holdings + USD values
+shll-onchain-runner price --token <SYM>      # Real-time price (DexScreener)
+shll-onchain-runner search --query <TEXT>     # Find token by name on BSC
+shll-onchain-runner tokens                   # List known token addresses
+```
 
 ### Risk Management
-| Command | Description |
-|---------|-------------|
-| `policies -k <ID>` | View active policies & current settings |
-| `config -k <ID> --tx-limit <BNB> --daily-limit <BNB> --cooldown <SEC>` | Tighten risk parameters |
+```bash
+shll-onchain-runner policies -k <ID>         # View active policies
+shll-onchain-runner config -k <ID> --tx-limit <BNB> --daily-limit <BNB> --cooldown <SEC>
+```
 
-## 🔧 What Happens Internally
+## 🤖 AI Agent Integration
 
-1. **Resolves tokens** — `BNB` → `0x0000...`, `USDC` → `0x8AC7...`
-2. **Builds path** — Auto-bridges through WBNB if needed
-3. **Gets quote** — On-chain `getAmountsOut()` for real-time pricing
-4. **Auto-approve** — Checks allowance, adds approve to batch if needed
-5. **Validates** — `PolicyClient.validate()` simulates against all policies
-6. **Executes** — Sends through `AgentNFA.execute()` → PolicyGuard → vault
+This skill outputs **structured JSON** on stdout, making it easy for any AI agent to parse:
+
+```json
+{"status":"success","tx":"0xabc...","message":"Swapped 0.1 BNB → 12.5 USDC"}
+```
+
+```json
+{"status":"rejected","reason":"Spending limit exceeded"}
+```
+
+### For AI providers:
+- **SKILL.md** — Structured skill metadata (name, description, commands, install instructions)
+- **stdout** — JSON-only output, designed for programmatic parsing
+- **stderr** — Human-readable errors
+- **Exit codes** — `0` = success, `1` = failure
+
+## 🔧 How It Works
+
+```
+AI Agent → CLI command → PolicyClient.validate() → PolicyGuard (on-chain) → execute via vault
+```
+
+1. AI constructs a CLI command based on user intent
+2. `PolicyClient.validate()` simulates against all on-chain policies
+3. If approved, `AgentNFA.execute()` routes through PolicyGuard → vault
+4. PolicyGuard enforces: spending limits, cooldowns, DEX whitelist, receiver guard
 
 ## 🛡️ Security
 
-- **PolicyGuard enforced** — Every transaction goes through on-chain policy validation (spending limits, cooldown, DEX whitelist, receiver guard)
-- **Vault isolation** — The operator key cannot directly access vault funds; all operations route through AgentNFA
-- **Renter-only config** — Risk parameters can only be tightened, never loosened beyond template ceiling
-- **⚠️ Use a dedicated wallet** for `RUNNER_PRIVATE_KEY` — this key pays gas for `init` and `config` transactions
+- **On-chain enforcement** — PolicyGuard validates every transaction, not the AI
+- **Vault isolation** — Operator key cannot directly access vault funds
+- **Renter-only config** — Risk limits can only be tightened, never loosened
+- **Safe by default** — Unknown selectors, targets, or recipients are rejected
 
 ## 📄 Environment Variables
 
@@ -77,3 +95,7 @@ shll-onchain-runner swap --from BNB --to USDC --amount 0.1 --token-id 5
 | `RPC_URL` | ❌ | BSC RPC (default: public endpoint) |
 | `NFA_ADDRESS` | ❌ | AgentNFA contract override |
 | `GUARD_ADDRESS` | ❌ | PolicyGuard contract override |
+
+## 📜 License
+
+MIT
