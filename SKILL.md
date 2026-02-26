@@ -3,6 +3,8 @@ name: shll-onchain-runner
 description: Execute DeFi transactions on BSC via a SHLL AgentNFA. 12 commands covering onboarding (init), trading (swap, wrap, unwrap, transfer), market data (portfolio, price, search, tokens), risk management (policies, config), and raw execution. All write operations validated by on-chain PolicyGuard.
 version: 3.0.0
 author: SHLL Team
+website: https://shll.run
+twitter: https://twitter.com/shllrun
 repository: https://github.com/kledx/shll-skills.git
 install: npm install -g shll-skills --registry https://registry.npmjs.org
 requires:
@@ -11,7 +13,7 @@ requires:
 
 # SHLL On-Chain Runner
 
-A skill that allows OpenClaw to safely interact with DeFi protocols on BSC Mainnet using a SHLL Agent NFA.
+A skill that allows any AI agent to safely interact with DeFi protocols on BSC Mainnet using a SHLL Agent NFA.
 
 ## 🎯 Purpose
 Use this skill when the user asks you to:

@@ -1,5 +1,7 @@
 # SHLL Skills — AI Agent DeFi Toolkit on BSC
 
+[![Website](https://img.shields.io/badge/Website-shll.run-blue)](https://shll.run) [![Twitter](https://img.shields.io/badge/Twitter-@shllrun-1DA1F2)](https://twitter.com/shllrun) [![npm](https://img.shields.io/npm/v/shll-skills)](https://www.npmjs.com/package/shll-skills)
+
 A CLI toolkit that gives **any AI agent** (OpenClaw, Claude, Codex, ChatGPT, etc.) the ability to execute DeFi operations on BSC Mainnet securely. All transactions are validated by the on-chain PolicyGuard — even if the AI hallucinates, the contract rejects unsafe operations.
 
 ## 📦 Install
@@ -95,6 +97,13 @@ AI Agent → CLI command → PolicyClient.validate() → PolicyGuard (on-chain) 
 | `RPC_URL` | ❌ | BSC RPC (default: public endpoint) |
 | `NFA_ADDRESS` | ❌ | AgentNFA contract override |
 | `GUARD_ADDRESS` | ❌ | PolicyGuard contract override |
+
+## 🔗 Links
+
+- 🌐 **Website**: [shll.run](https://shll.run)
+- 🐦 **Twitter**: [@shllrun](https://twitter.com/shllrun)
+- 📦 **npm**: [shll-skills](https://www.npmjs.com/package/shll-skills)
+- 💻 **GitHub**: [kledx/shll-skills](https://github.com/kledx/shll-skills)
 
 ## 📜 License
 
