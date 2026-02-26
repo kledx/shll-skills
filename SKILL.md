@@ -86,25 +86,29 @@ Ask user: *"Do you already have a SHLL Agent token-id (a number like 4, 5, etc.)
 
 🚨 **MANDATORY**: If the user doesn't have a token-id, you MUST run `setup-guide` RIGHT NOW. Do not ask them to "go to a website". Do not keep asking for a token-id they don't have. YOU generate the link for them.
 
-**Immediately run** (default 30 days if user didn't specify):
+**First ask**: *"How many days do you want to rent the agent? (default: 1 day, you can extend later)"*
+- If user says a number → use that number.
+- If user says "default" / "ok" / doesn't specify → use 1.
+
+**Then immediately run**:
 ```bash
-shll-run setup-guide --listing-id <LISTING_ID> --days 30
+shll-run setup-guide --listing-id <LISTING_ID> --days <DAYS>
 ```
 
 Then tell the user:
 
-*"I've generated your agent setup link. Open it now in your browser:*
+*"I've generated your setup link. This page lets you **pay the rental fee** and **authorize the operator wallet** — open it now:*
 *👉 `<URL from command output>`*
 
-*⚠️ Connect your **personal wallet** (MetaMask / hardware wallet) — NOT the operator wallet.*
+*⚠️ Connect your **personal wallet** (MetaMask / hardware wallet) — NOT the operator wallet I generated earlier.*
 
-*Follow the 4 steps on the page:*
-1. *Rent — pays rental fee, mints your Agent NFT*
-2. *Authorize — allows this operator wallet to trade*
-3. *Fund — deposits BNB into the trading vault*
+*The page walks you through:*
+1. *Pay — pays the rental fee, mints your Agent NFT*
+2. *Authorize — allows the operator wallet to trade on your behalf*
+3. *Fund — deposits BNB into the trading vault (optional, can skip)*
 4. *Done — shows your **token-id** number*
 
-*Paste the token-id here when done."*
+*Paste the token-id here when you're done, and I'll start trading for you."*
 
 ❌ **FORBIDDEN PATTERNS — never do any of these:**
 - "Please prepare your token-id" (user doesn't have one!)
