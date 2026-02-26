@@ -1,128 +1,136 @@
 ---
-name: shll-onchain-runner
-description: Execute DeFi transactions on BSC via a SHLL AgentNFA. 12 commands covering onboarding (init), trading (swap, wrap, unwrap, transfer), market data (portfolio, price, search, tokens), risk management (policies, config), and raw execution. All write operations validated by on-chain PolicyGuard.
-version: 3.0.0
+name: shll-run
+description: Execute DeFi transactions on BSC via a SHLL AgentNFA. 12 commands for trading, market data, and risk management. All write operations validated by on-chain PolicyGuard.
+version: 3.1.0
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
 repository: https://github.com/kledx/shll-skills.git
 install: npm install -g shll-skills --registry https://registry.npmjs.org
+update: npm update -g shll-skills --registry https://registry.npmjs.org
 requires:
-  - RUNNER_PRIVATE_KEY: Operator private key (required for write commands)
+  - RUNNER_PRIVATE_KEY: A wallet private key. Only pays gas fees (~$0.01/tx) and rental fees. Does NOT access vault funds. A fresh wallet with ~$1 BNB is enough.
 ---
 
-# SHLL On-Chain Runner
+# SHLL Skills
 
-A skill that allows any AI agent to safely interact with DeFi protocols on BSC Mainnet using a SHLL Agent NFA.
+A tool that lets any AI agent (OpenClaw, Claude, Codex, ChatGPT, etc.) trade on BSC Mainnet safely. Every transaction goes through an on-chain PolicyGuard — even if you construct a bad command, the smart contract will reject it.
 
-## 🎯 Purpose
-Use this skill when the user asks you to:
-- "Swap 0.5 BNB for USDC"
-- "Buy some CAKE using my SHLL agent"
-- "Swap 50 USDT for WBNB"
+## ⚠️ Key Concepts — Read Before Using
 
-## 🛠 Commands
+### RUNNER_PRIVATE_KEY — What is it?
+A **gas-paying wallet key**. It is NOT the trading wallet. It only pays:
+- **Gas fees**: ~$0.01 per transaction (very cheap on BSC)
+- **Rental fee**: small one-time BNB payment when creating an agent
 
-### Token Swap (recommended)
+**It does NOT hold or access trading funds.** Trading funds live in a secure on-chain vault protected by PolicyGuard. Even if this key is compromised, the attacker cannot steal vault funds.
+
+**Tell the user:** *"Create a fresh wallet (e.g. in MetaMask), send it ~$1 of BNB, export the private key, and set it as RUNNER_PRIVATE_KEY. That's all you need."*
+
+### token-id — What is it?
+The Agent's unique ID on the blockchain (a number like 1, 2, 5, etc.). Users get it by running `shll-run init`. If the user doesn't have one, help them run init first.
+
+### vault — What is it?
+A secure smart contract wallet that holds the user's trading funds. The RUNNER_PRIVATE_KEY cannot directly withdraw from it. All operations go through on-chain PolicyGuard safety checks (spending limits, cooldown, whitelisted DEXs, etc.).
+
+### listing-id — Where to find it?
+The listing-id is the template's unique identifier. Users can find it on the SHLL marketplace at https://shll.run or from the SHLL team.
+
+---
+
+## 🚀 First-Time User Setup (Step by Step)
+
+### Step 1: Install
 ```bash
-shll-onchain-runner swap --from <TOKEN> --to <TOKEN> --amount <AMOUNT> --token-id <NFA_ID>
+npm install -g shll-skills
 ```
 
-**Parameters:**
-- `--from` / `-f`: Input token. Use a symbol (BNB, USDC, USDT, WBNB, CAKE, ETH, BTCB, DAI, BUSD) or a 0x address.
-- `--to` / `-t`: Output token (same format).
-- `--amount` / `-a`: Amount in human-readable format (e.g. `0.5`, `100`).
-- `--token-id` / `-k`: The user's Agent NFA Token ID.
-- `--slippage` / `-s`: Optional slippage % (default: 5).
+### Step 2: Create a Gas Wallet
+The user needs a wallet to pay gas fees (~$0.01 per transaction). Guide them:
+1. Create a new wallet in MetaMask (or any wallet)
+2. Send ~$1 of BNB to it (for gas + rental)
+3. Export the private key
 
-**Example:**
+### Step 3: Set the Key
 ```bash
-shll-onchain-runner swap --from BNB --to USDC --amount 0.1 --token-id 1
-shll-onchain-runner swap --from USDT --to CAKE --amount 50 --token-id 1
+# Linux/Mac
+export RUNNER_PRIVATE_KEY="0x..."
+
+# Windows PowerShell
+$env:RUNNER_PRIVATE_KEY="0x..."
 ```
 
-The script handles everything internally:
-1. Resolves token symbols to BSC addresses.
-2. Builds the optimal routing path (auto-bridges through WBNB).
-3. Queries PancakeSwap for a real-time price quote.
-4. Checks ERC20 allowance and auto-approves if needed (via atomic batch).
-5. Validates against PolicyGuard.
-6. Executes on-chain.
-
-### List Known Tokens
+### Step 4: Create an Agent
 ```bash
-shll-onchain-runner tokens
-```
-
-### Wrap BNB → WBNB
-```bash
-shll-onchain-runner wrap --token-id <NFA_ID> --amount 0.5
-```
-
-### Unwrap WBNB → BNB
-```bash
-shll-onchain-runner unwrap --token-id <NFA_ID> --amount 0.5
-```
-
-### Transfer Tokens from Vault
-```bash
-shll-onchain-runner transfer --token-id <NFA_ID> --token USDC --amount 10 --to 0xRecipient
-```
-Note: ReceiverGuardPolicy may restrict which addresses can receive transfers.
-
-### Raw Transaction (advanced)
-```bash
-shll-onchain-runner raw --target <ADDRESS> --data <CALLDATA> --token-id <NFA_ID>
-```
-
-### One-Click Setup (first-time users)
-```bash
-shll-onchain-runner init --listing-id <LISTING_BYTES32> --days 30 --fund 0.5
+shll-run init --listing-id <LISTING_ID_FROM_SHLL_MARKETPLACE> --days 30 --fund 0.1
 ```
 This will:
-1. Rent an Agent from the template listing (pays rent in BNB)
-2. Authorize your key as the operator
-3. Fund the vault with BNB
+1. Rent an Agent from the SHLL marketplace (costs a small BNB rental fee)
+2. Authorize the gas wallet as the operator
+3. Fund the vault with 0.1 BNB for trading
 
-After init completes, it outputs the Token ID you need for `swap` commands.
+**Output:** `{ "status": "success", "tokenId": "5", "vault": "0x..." }`
+→ The user's token-id is `5`. Save this number for all future commands.
 
-### Query Portfolio
+### Step 5: Start Trading
 ```bash
-shll-onchain-runner portfolio --token-id <NFA_ID>
+shll-run swap --from BNB --to USDC --amount 0.05 -k 5
+shll-run portfolio -k 5    # Check what's in the vault
 ```
-Returns vault BNB balance + all ERC20 holdings with USD values.
 
-### Check Token Price
-```bash
-shll-onchain-runner price --token CAKE
-shll-onchain-runner price --token 0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82
-```
-Returns real-time price, 24h volume, liquidity, and price change from DexScreener.
+---
 
-### Search for a Token
-```bash
-shll-onchain-runner search --query "pancake"
-```
-Finds BSC tokens by name or symbol. Returns addresses and market data.
+## � All Commands
 
-### View Active Policies
+### Trading & Asset Management
 ```bash
-shll-onchain-runner policies --token-id <NFA_ID>
+shll-run swap --from <TOKEN> --to <TOKEN> --amount <N> -k <ID> [--slippage <PERCENT>]
+shll-run wrap --amount <BNB> -k <ID>          # BNB → WBNB
+shll-run unwrap --amount <BNB> -k <ID>        # WBNB → BNB
+shll-run transfer --token <SYM> --amount <N> --to <ADDR> -k <ID>
+shll-run raw --target <ADDR> --data <HEX> -k <ID>
 ```
-Returns all active policies, whether they're configurable, and current settings (limits, cooldown).
 
-### Configure Risk Parameters
+**Supported tokens:** BNB, USDC, USDT, WBNB, CAKE, ETH, BTCB, DAI, BUSD — or any 0x address.
+
+### Market Data (read-only, no private key needed)
 ```bash
-shll-onchain-runner config --token-id <NFA_ID> --tx-limit 0.5 --daily-limit 2 --cooldown 120
+shll-run portfolio -k <ID>         # Vault balances + USD values
+shll-run price --token CAKE        # Real-time price from DexScreener
+shll-run search --query "pancake"  # Find token by name on BSC
+shll-run tokens                    # List known token addresses
 ```
-Adjusts SpendingLimitPolicy and CooldownPolicy. You can only tighten limits (not exceed template ceiling).
+
+### Risk Management
+```bash
+shll-run policies -k <ID>          # View active safety policies
+shll-run config -k <ID> --tx-limit 0.5 --daily-limit 2 --cooldown 120
+```
+
+### Setup
+```bash
+shll-run init --listing-id <BYTES32> --days <N> [--fund <BNB>]
+```
+
+---
+
+## 🔄 Updating
+```bash
+npm update -g shll-skills
+```
+The skill does NOT auto-update. Run the above command to get the latest version.
 
 ## 🔐 Security
-The SHLL PolicyGuard smart contract will automatically reject any transaction that violates the agent's policies (spending limits, cooldown, blacklisted targets, etc.). You do NOT need to verify safety — just construct the intent and the on-chain guard handles the rest.
+The on-chain PolicyGuard automatically rejects any transaction that violates the agent's safety policies. You do NOT need to verify safety — just construct the command and the smart contract handles the rest.
 
 ## 📤 Output Format
 All output is JSON on stdout:
-- Success: `{ "status": "success", "hash": "0x..." }`
-- Rejected by policy: `{ "status": "rejected", "reason": "Exceeds per-tx limit" }`
+- Success: `{ "status": "success", "tx": "0x..." }`
+- Rejected: `{ "status": "rejected", "reason": "Exceeds per-tx limit" }`
 - Error: `{ "status": "error", "message": "..." }`
-- Quote info: `{ "status": "info", "message": "Quote: ..." }`
+
+## 🔗 Links
+- 🌐 Website: https://shll.run
+- 🐦 Twitter: @shllrun
+- 📦 npm: https://www.npmjs.com/package/shll-skills
+- 💻 GitHub: https://github.com/kledx/shll-skills
