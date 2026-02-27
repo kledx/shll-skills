@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands — users only need to chat.
-version: 4.1.0
+version: 5.0.0
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
@@ -144,6 +144,9 @@ Examples:
 - "Swap 0.1 BNB for USDC"
 - "What's my portfolio?"
 - "What's the price of CAKE?"
+- "Lend 10 USDT on Venus"
+- "How much am I earning on Venus?"
+- "Redeem my USDT from Venus"
 
 ---
 
@@ -161,11 +164,21 @@ Examples:
 ### Trading
 | Command | What it does |
 |---------|-------------|
-| `shll-run swap -f <FROM> -t <TO> -a <AMT> -k <ID>` | Token swap on PancakeSwap |
+| `shll-run swap -f <FROM> -t <TO> -a <AMT> -k <ID>` | Token swap (auto-routes PancakeSwap V2/V3) |
+| `shll-run swap ... --dex v3 --fee 500` | Force V3 with 0.05% fee tier |
 | `shll-run wrap -a <BNB> -k <ID>` | BNB -> WBNB |
 | `shll-run unwrap -a <BNB> -k <ID>` | WBNB -> BNB |
 | `shll-run transfer --token <SYM> -a <AMT> --to <ADDR> -k <ID>` | Send tokens from vault |
 | `shll-run raw --target <ADDR> --data <HEX> -k <ID>` | Raw calldata |
+
+### Lending (Venus Protocol)
+| Command | What it does |
+|---------|-------------|
+| `shll-run lend -t <TOKEN> -a <AMT> -k <ID>` | Supply tokens to Venus to earn yield |
+| `shll-run redeem -t <TOKEN> -a <AMT> -k <ID>` | Withdraw supplied tokens from Venus |
+| `shll-run lending-info -k <ID>` | Show supply balances + APY across Venus markets |
+
+Supported lending tokens: **BNB, USDT, USDC, BUSD**
 
 ### Market Data (read-only)
 | Command | What it does |
@@ -185,6 +198,9 @@ Examples:
 
 **Supported tokens:** BNB, USDC, USDT, WBNB, CAKE, ETH, BTCB, DAI, BUSD, or any 0x address.
 
+**Swap routing modes:** `--dex auto` (default: compares V2/V3 quotes), `--dex v2`, `--dex v3`.
+**V3 fee tiers:** `--fee 100` (0.01%), `--fee 500` (0.05%), `--fee 2500` (0.25%, default), `--fee 10000` (1%).
+
 ---
 
 ## HOW TO EXPLAIN THINGS TO USERS
@@ -201,7 +217,11 @@ Examples:
 ### "What are policies?"
 *"Policies are on-chain safety rules: how much you can spend per transaction, how often you can trade, which DEXs are allowed, etc. You can tighten these rules but never loosen them beyond the template ceiling."*
 
----
+### "What is Venus Protocol?"
+*"Venus is a decentralized lending protocol on BSC. When you 'lend' tokens to Venus, you deposit them into a supply pool and earn interest (APY). Other users borrow from the same pool and pay interest. You can withdraw (redeem) your tokens plus earned interest at any time. Your tokens stay on-chain in Venus smart contracts — SHLL does not hold them."*
+
+### "Is lending safe?"
+*"Venus is one of the most established protocols on BSC with over $1B TVL. However, DeFi lending always carries smart contract risk and market risk. Only lend amounts you're comfortable with. Your agent's DeFiGuard policy ensures only approved lending operations can be executed."*
 
 ## OUTPUT FORMAT
 All commands output JSON:
