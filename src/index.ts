@@ -22,7 +22,16 @@ const DEFAULT_RPC = "https://bsc-dataseed1.binance.org";
 const DEFAULT_LISTING_MANAGER = "0x1f9CE85bD0FF75acc3D92eB79f1Eb472f0865071";
 const DEFAULT_LISTING_ID = "0x733e9d959da5c1745fa507df6b47537f0945012eff3ceb4b684cd4482f2bc4d3";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+const PANCAKE_V3_SMART_ROUTER = "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
+
+// ── Venus Protocol (BSC Mainnet) ────────────────────────
+const VENUS_VTOKENS: Record<string, Address> = {
+    BNB: "0xA07c5b74C9B40447a954e1466938b865b6BBea36" as Address, // vBNB
+    USDT: "0xfD5840Cd36d94D7229439859C0112a4185BC0255" as Address, // vUSDT
+    USDC: "0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8" as Address, // vUSDC
+    BUSD: "0x95c78222B3D6e262426483D42CfA53685A67Ab9D" as Address, // vBUSD
+};
 
 // ── Token Symbol Registry (BSC Mainnet) ─────────────────
 const TOKEN_REGISTRY: Record<string, { address: Address; decimals: number }> = {
@@ -160,6 +169,97 @@ const GET_AMOUNTS_OUT_ABI = [{
     stateMutability: "view" as const,
 }] as const;
 
+// ── PancakeSwap V3 SmartRouter ABI ──────────────────────
+const V3_EXACT_INPUT_SINGLE_ABI = [{
+    type: "function" as const, name: "exactInputSingle",
+    inputs: [{
+        name: "params", type: "tuple",
+        components: [
+            { name: "tokenIn", type: "address" },
+            { name: "tokenOut", type: "address" },
+            { name: "fee", type: "uint24" },
+            { name: "recipient", type: "address" },
+            { name: "amountIn", type: "uint256" },
+            { name: "amountOutMinimum", type: "uint256" },
+            { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+    }],
+    outputs: [{ name: "amountOut", type: "uint256" }],
+    stateMutability: "payable" as const,
+}] as const;
+
+const V3_QUOTE_ABI = [{
+    type: "function" as const, name: "quoteExactInputSingle",
+    inputs: [{
+        name: "params", type: "tuple",
+        components: [
+            { name: "tokenIn", type: "address" },
+            { name: "tokenOut", type: "address" },
+            { name: "amountIn", type: "uint256" },
+            { name: "fee", type: "uint24" },
+            { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+    }],
+    outputs: [
+        { name: "amountOut", type: "uint256" },
+        { name: "sqrtPriceX96After", type: "uint160" },
+        { name: "initializedTicksCrossed", type: "uint32" },
+        { name: "gasEstimate", type: "uint256" },
+    ],
+    stateMutability: "nonpayable" as const,
+}] as const;
+
+const V3_QUOTER = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997" as Address;
+
+// ── Venus Protocol ABI ──────────────────────────────────
+// Write operations (for encodeFunctionData)
+const VTOKEN_ABI = [
+    // mint(uint256) — supply ERC20 tokens to Venus
+    {
+        type: "function" as const, name: "mint",
+        inputs: [{ name: "mintAmount", type: "uint256" }],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "nonpayable" as const,
+    },
+    // redeemUnderlying(uint256) — redeem by underlying amount
+    {
+        type: "function" as const, name: "redeemUnderlying",
+        inputs: [{ name: "redeemAmount", type: "uint256" }],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "nonpayable" as const,
+    },
+] as const;
+
+// Read operations (for readContract — must be view/pure)
+const VTOKEN_READ_ABI = [
+    {
+        type: "function" as const, name: "balanceOfUnderlying",
+        inputs: [{ name: "owner", type: "address" }],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "view" as const,
+    },
+    {
+        type: "function" as const, name: "supplyRatePerBlock",
+        inputs: [],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "view" as const,
+    },
+    {
+        type: "function" as const, name: "underlying",
+        inputs: [],
+        outputs: [{ name: "", type: "address" }],
+        stateMutability: "view" as const,
+    },
+] as const;
+
+// vBNB uses payable mint() with no args
+const VBNB_MINT_ABI = [{
+    type: "function" as const, name: "mint",
+    inputs: [],
+    outputs: [],
+    stateMutability: "payable" as const,
+}] as const;
+
 // ── Helpers ─────────────────────────────────────────────
 function toHex(s: string): Hex {
     return (s.startsWith("0x") ? s : `0x${s}`) as Hex;
@@ -232,12 +332,14 @@ program.name("shll-onchain-runner").description("Execute DeFi actions securely v
 
 // ── Subcommand: swap ────────────────────────────────────
 const swapCmd = new Command("swap")
-    .description("Swap tokens on PancakeSwap V2")
+    .description("Swap tokens on PancakeSwap (auto-routes V2/V3)")
     .requiredOption("-f, --from <token>", "Input token (symbol or 0x address, e.g. USDC, BNB)")
     .requiredOption("-t, --to <token>", "Output token (symbol or 0x address)")
     .requiredOption("-a, --amount <number>", "Amount to swap (human-readable, e.g. 0.5)")
     .option("-s, --slippage <percent>", "Slippage tolerance in percent (default: 5)", "5")
-    .option("--router <address>", "DEX router address", PANCAKE_V2_ROUTER);
+    .option("--dex <mode>", "DEX routing: auto, v2, v3 (default: auto)", "auto")
+    .option("--fee <tier>", "V3 fee tier in bps (default: 2500 = 0.25%)", "2500")
+    .option("--router <address>", "DEX router address (override)");
 addSharedOptions(swapCmd);
 
 swapCmd.action(async (opts) => {
@@ -251,49 +353,107 @@ swapCmd.action(async (opts) => {
         const isNativeIn = fromToken.address === "0x0000000000000000000000000000000000000000";
         const amountIn = parseAmount(opts.amount, fromToken.decimals);
         const slippage = Number(opts.slippage);
-        const router = (opts.router || PANCAKE_V2_ROUTER) as Address;
+        const dexMode = opts.dex || "auto";
+        const feeTier = Number(opts.fee || "2500");
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 
         // Get vault address for the agent
         const vault = await client.getVault(tokenId);
-
-        // Build routing path (use WBNB as intermediate if needed)
-        const pathIn = isNativeIn ? (WBNB as Address) : fromToken.address;
-        const pathOut = toToken.address === "0x0000000000000000000000000000000000000000"
-            ? (WBNB as Address) : toToken.address;
-        let path: Address[];
-        if (pathIn.toLowerCase() !== WBNB.toLowerCase() && pathOut.toLowerCase() !== WBNB.toLowerCase()) {
-            path = [pathIn, WBNB as Address, pathOut]; // bridge through WBNB
-        } else {
-            path = [pathIn, pathOut];
-        }
-
-        // Get on-chain quote for minOut
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
-        let minOut = 0n;
-        try {
-            const amounts = await publicClient.readContract({
-                address: router,
-                abi: GET_AMOUNTS_OUT_ABI,
-                functionName: "getAmountsOut",
-                args: [amountIn, path],
-            });
-            const expectedOut = amounts[amounts.length - 1];
-            minOut = (expectedOut * BigInt(100 - slippage)) / 100n;
-            output({
-                status: "info",
-                message: `Quote: ${amountIn.toString()} ${opts.from} → ~${expectedOut.toString()} ${opts.to} (minOut with ${slippage}% slippage: ${minOut.toString()})`,
-            });
-        } catch {
-            output({ status: "error", message: "Failed to get on-chain quote. The token pair may lack liquidity." });
-            process.exit(1);
+
+        // Token addresses for routing (convert BNB → WBNB for path)
+        const tokenInAddr = isNativeIn ? (WBNB as Address) : fromToken.address;
+        const tokenOutAddr = toToken.address === "0x0000000000000000000000000000000000000000"
+            ? (WBNB as Address) : toToken.address;
+
+        // ── Try V3 quote ──
+        let v3Quote = 0n;
+        let v3Available = false;
+        if (dexMode === "auto" || dexMode === "v3") {
+            try {
+                const v3Result = await publicClient.simulateContract({
+                    address: V3_QUOTER,
+                    abi: V3_QUOTE_ABI,
+                    functionName: "quoteExactInputSingle",
+                    args: [{
+                        tokenIn: tokenInAddr,
+                        tokenOut: tokenOutAddr,
+                        amountIn,
+                        fee: feeTier,
+                        sqrtPriceLimitX96: 0n,
+                    }],
+                });
+                v3Quote = v3Result.result[0];
+                v3Available = v3Quote > 0n;
+            } catch {
+                // V3 pool may not exist for this pair/fee
+            }
         }
 
-        // Build swap payload
+        // ── Try V2 quote ──
+        let v2Quote = 0n;
+        let v2Available = false;
+        const v2Router = (opts.router || PANCAKE_V2_ROUTER) as Address;
+        if (dexMode === "auto" || dexMode === "v2") {
+            try {
+                let path: Address[];
+                if (tokenInAddr.toLowerCase() !== WBNB.toLowerCase() && tokenOutAddr.toLowerCase() !== WBNB.toLowerCase()) {
+                    path = [tokenInAddr, WBNB as Address, tokenOutAddr];
+                } else {
+                    path = [tokenInAddr, tokenOutAddr];
+                }
+                const amounts = await publicClient.readContract({
+                    address: v2Router,
+                    abi: GET_AMOUNTS_OUT_ABI,
+                    functionName: "getAmountsOut",
+                    args: [amountIn, path],
+                });
+                v2Quote = amounts[amounts.length - 1];
+                v2Available = v2Quote > 0n;
+            } catch {
+                // V2 pair may not exist
+            }
+        }
+
+        // ── Pick best route ──
+        let useV3 = false;
+        if (dexMode === "v3") {
+            if (!v3Available) {
+                output({ status: "error", message: "V3 pool not available for this pair/fee tier" });
+                process.exit(1);
+            }
+            useV3 = true;
+        } else if (dexMode === "v2") {
+            if (!v2Available) {
+                output({ status: "error", message: "V2 pair not available for this token pair" });
+                process.exit(1);
+            }
+            useV3 = false;
+        } else {
+            // auto: pick best quote
+            if (!v3Available && !v2Available) {
+                output({ status: "error", message: "No liquidity found on V2 or V3 for this pair" });
+                process.exit(1);
+            }
+            useV3 = v3Available && (!v2Available || v3Quote >= v2Quote);
+        }
+
+        const selectedQuote = useV3 ? v3Quote : v2Quote;
+        const minOut = (selectedQuote * BigInt(100 - slippage)) / 100n;
+
+        output({
+            status: "info",
+            message: `Route: ${useV3 ? "V3" : "V2"} | Quote: ${amountIn.toString()} ${opts.from} → ~${selectedQuote.toString()} ${opts.to}` +
+                (v3Available && v2Available ? ` (V3: ${v3Quote.toString()}, V2: ${v2Quote.toString()})` : "") +
+                ` | minOut: ${minOut.toString()} (${slippage}% slippage)`,
+        });
+
+        // ── Build actions ──
         const actions: Action[] = [];
 
         // Auto-approve if ERC20 input
         if (!isNativeIn) {
+            const router = useV3 ? (PANCAKE_V3_SMART_ROUTER as Address) : v2Router;
             try {
                 const currentAllowance = await publicClient.readContract({
                     address: fromToken.address,
@@ -310,31 +470,60 @@ swapCmd.action(async (opts) => {
                     actions.push({ target: fromToken.address, value: 0n, data: approveData });
                 }
             } catch {
-                // If allowance check fails, add approve anyway
                 const approveData = encodeFunctionData({
                     abi: ERC20_ABI,
                     functionName: "approve",
-                    args: [router, amountIn],
+                    args: [useV3 ? (PANCAKE_V3_SMART_ROUTER as Address) : v2Router, amountIn],
                 });
                 actions.push({ target: fromToken.address, value: 0n, data: approveData });
             }
         }
 
         // Swap calldata
-        if (isNativeIn) {
+        if (useV3) {
+            // V3: exactInputSingle
             const data = encodeFunctionData({
-                abi: SWAP_EXACT_ETH_ABI,
-                functionName: "swapExactETHForTokens",
-                args: [minOut, path, vault, deadline],
+                abi: V3_EXACT_INPUT_SINGLE_ABI,
+                functionName: "exactInputSingle",
+                args: [{
+                    tokenIn: tokenInAddr,
+                    tokenOut: tokenOutAddr,
+                    fee: feeTier,
+                    recipient: vault,
+                    amountIn,
+                    amountOutMinimum: minOut,
+                    sqrtPriceLimitX96: 0n,
+                }],
             });
-            actions.push({ target: router, value: amountIn, data });
+            actions.push({
+                target: PANCAKE_V3_SMART_ROUTER as Address,
+                value: isNativeIn ? amountIn : 0n,
+                data,
+            });
         } else {
-            const data = encodeFunctionData({
-                abi: SWAP_EXACT_TOKENS_ABI,
-                functionName: "swapExactTokensForTokens",
-                args: [amountIn, minOut, path, vault, deadline],
-            });
-            actions.push({ target: router, value: 0n, data });
+            // V2: existing logic
+            let path: Address[];
+            if (tokenInAddr.toLowerCase() !== WBNB.toLowerCase() && tokenOutAddr.toLowerCase() !== WBNB.toLowerCase()) {
+                path = [tokenInAddr, WBNB as Address, tokenOutAddr];
+            } else {
+                path = [tokenInAddr, tokenOutAddr];
+            }
+
+            if (isNativeIn) {
+                const data = encodeFunctionData({
+                    abi: SWAP_EXACT_ETH_ABI,
+                    functionName: "swapExactETHForTokens",
+                    args: [minOut, path, vault, deadline],
+                });
+                actions.push({ target: v2Router, value: amountIn, data });
+            } else {
+                const data = encodeFunctionData({
+                    abi: SWAP_EXACT_TOKENS_ABI,
+                    functionName: "swapExactTokensForTokens",
+                    args: [amountIn, minOut, path, vault, deadline],
+                });
+                actions.push({ target: v2Router, value: 0n, data });
+            }
         }
 
         // Validate all actions
@@ -346,7 +535,7 @@ swapCmd.action(async (opts) => {
             }
         }
 
-        // Execute (skip internal re-validation)
+        // Execute
         let hash: Hex;
         if (actions.length === 1) {
             const result = await client.execute(tokenId, actions[0], true);
@@ -356,7 +545,7 @@ swapCmd.action(async (opts) => {
             hash = result.hash;
         }
 
-        output({ status: "success", hash });
+        output({ status: "success", hash, dex: useV3 ? "v3" : "v2" });
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
@@ -1709,6 +1898,218 @@ statusCmd.action(async (opts) => {
     }
 });
 
+// ── Subcommand: lend (Venus Protocol) ───────────────────
+const lendCmd = new Command("lend")
+    .description("Supply tokens to Venus Protocol to earn yield")
+    .requiredOption("-t, --token <symbol>", "Token to supply (BNB, USDT, USDC, BUSD)")
+    .requiredOption("-a, --amount <number>", "Amount to supply (human-readable)");
+addSharedOptions(lendCmd);
+
+lendCmd.action(async (opts) => {
+    try {
+        const client = createClient(opts);
+        const tokenId = BigInt(opts.tokenId);
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+
+        const symbol = opts.token.toUpperCase();
+        const vTokenAddr = VENUS_VTOKENS[symbol];
+        if (!vTokenAddr) {
+            output({ status: "error", message: `Unsupported token for Venus lending: ${symbol}. Supported: ${Object.keys(VENUS_VTOKENS).join(", ")}` });
+            process.exit(1);
+        }
+
+        const isBNB = symbol === "BNB";
+        const tokenInfo = resolveToken(symbol);
+        const amount = parseAmount(opts.amount, tokenInfo.decimals);
+        const vault = await client.getVault(tokenId);
+
+        output({ status: "info", message: `Supplying ${opts.amount} ${symbol} to Venus (vToken: ${vTokenAddr})` });
+
+        const actions: Action[] = [];
+
+        if (isBNB) {
+            // vBNB: mint() payable — send BNB directly
+            const data = encodeFunctionData({ abi: VBNB_MINT_ABI, functionName: "mint" });
+            actions.push({ target: vTokenAddr, value: amount, data });
+        } else {
+            // ERC20: approve → mint(amount)
+            const currentAllowance = await publicClient.readContract({
+                address: tokenInfo.address,
+                abi: ERC20_ABI,
+                functionName: "allowance",
+                args: [vault, vTokenAddr],
+            }).catch(() => 0n);
+
+            if (currentAllowance < amount) {
+                const approveData = encodeFunctionData({
+                    abi: ERC20_ABI,
+                    functionName: "approve",
+                    args: [vTokenAddr, amount],
+                });
+                actions.push({ target: tokenInfo.address, value: 0n, data: approveData });
+            }
+
+            const mintData = encodeFunctionData({
+                abi: VTOKEN_ABI,
+                functionName: "mint",
+                args: [amount],
+            });
+            actions.push({ target: vTokenAddr, value: 0n, data: mintData });
+        }
+
+        // Validate
+        for (const action of actions) {
+            const simResult = await client.validate(tokenId, action);
+            if (!simResult.ok) {
+                output({ status: "rejected", reason: simResult.reason });
+                process.exit(0);
+            }
+        }
+
+        // Execute
+        let hash: Hex;
+        if (actions.length === 1) {
+            const result = await client.execute(tokenId, actions[0], true);
+            hash = result.hash;
+        } else {
+            const result = await client.executeBatch(tokenId, actions, true);
+            hash = result.hash;
+        }
+
+        output({ status: "success", hash, protocol: "venus", action: "supply", token: symbol, amount: opts.amount });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
+// ── Subcommand: redeem (Venus Protocol) ─────────────────
+const redeemCmd = new Command("redeem")
+    .description("Withdraw supplied tokens from Venus Protocol")
+    .requiredOption("-t, --token <symbol>", "Token to redeem (BNB, USDT, USDC, BUSD)")
+    .requiredOption("-a, --amount <number>", "Amount of underlying to redeem (human-readable)");
+addSharedOptions(redeemCmd);
+
+redeemCmd.action(async (opts) => {
+    try {
+        const client = createClient(opts);
+        const tokenId = BigInt(opts.tokenId);
+
+        const symbol = opts.token.toUpperCase();
+        const vTokenAddr = VENUS_VTOKENS[symbol];
+        if (!vTokenAddr) {
+            output({ status: "error", message: `Unsupported token: ${symbol}. Supported: ${Object.keys(VENUS_VTOKENS).join(", ")}` });
+            process.exit(1);
+        }
+
+        const tokenInfo = resolveToken(symbol);
+        const amount = parseAmount(opts.amount, tokenInfo.decimals);
+
+        output({ status: "info", message: `Redeeming ${opts.amount} ${symbol} from Venus` });
+
+        const data = encodeFunctionData({
+            abi: VTOKEN_ABI,
+            functionName: "redeemUnderlying",
+            args: [amount],
+        });
+
+        const action: Action = { target: vTokenAddr, value: 0n, data };
+
+        const simResult = await client.validate(tokenId, action);
+        if (!simResult.ok) {
+            output({ status: "rejected", reason: simResult.reason });
+            process.exit(0);
+        }
+
+        const result = await client.execute(tokenId, action, true);
+        output({ status: "success", hash: result.hash, protocol: "venus", action: "redeem", token: symbol, amount: opts.amount });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
+// ── Subcommand: lending-info (read-only) ────────────────
+const lendingInfoCmd = new Command("lending-info")
+    .description("Show Venus Protocol supply balances and APY for agent vault")
+    .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
+    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
+    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+
+lendingInfoCmd.action(async (opts) => {
+    try {
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+        const tokenId = BigInt(opts.tokenId);
+
+        // Get vault address
+        const policyClient = createPolicyClient(opts);
+        const vault = await policyClient.getVault(tokenId);
+
+        const BLOCKS_PER_YEAR = 10512000n; // ~3s block time on BSC
+
+        const positions: Array<Record<string, unknown>> = [];
+
+        for (const [symbol, vTokenAddr] of Object.entries(VENUS_VTOKENS)) {
+            try {
+                // balanceOfUnderlying — get supplied amount
+                const supplied = await publicClient.readContract({
+                    address: vTokenAddr,
+                    abi: VTOKEN_READ_ABI,
+                    functionName: "balanceOfUnderlying",
+                    args: [vault],
+                });
+
+                // supplyRatePerBlock — calculate APY
+                const ratePerBlock = await publicClient.readContract({
+                    address: vTokenAddr,
+                    abi: VTOKEN_READ_ABI,
+                    functionName: "supplyRatePerBlock",
+                });
+
+                // APY = ((1 + ratePerBlock / 1e18) ^ blocksPerYear - 1) * 100
+                const rateFloat = Number(ratePerBlock) / 1e18;
+                const apy = (Math.pow(1 + rateFloat, Number(BLOCKS_PER_YEAR)) - 1) * 100;
+
+                const tokenInfo = resolveToken(symbol);
+                const suppliedHuman = (Number(supplied) / Math.pow(10, tokenInfo.decimals)).toFixed(6);
+
+                positions.push({
+                    token: symbol,
+                    vToken: vTokenAddr,
+                    supplied: suppliedHuman,
+                    suppliedRaw: supplied.toString(),
+                    apyPercent: apy.toFixed(2),
+                    hasPosition: supplied > 0n,
+                });
+            } catch {
+                positions.push({ token: symbol, vToken: vTokenAddr, error: "Failed to query" });
+            }
+        }
+
+        const activePositions = positions.filter((p) => p.hasPosition);
+        output({
+            status: "success",
+            vault,
+            protocol: "venus",
+            positions,
+            activeCount: activePositions.length,
+            totalMarkets: positions.length,
+        });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
 program.addCommand(swapCmd);
 program.addCommand(rawCmd);
 program.addCommand(tokensCmd);
@@ -1727,5 +2128,9 @@ program.addCommand(genWalletCmd);
 program.addCommand(balanceCmd);
 program.addCommand(historyCmd);
 program.addCommand(statusCmd);
+program.addCommand(lendCmd);
+program.addCommand(redeemCmd);
+program.addCommand(lendingInfoCmd);
 program.parse(process.argv);
+
 
