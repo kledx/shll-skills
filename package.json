@@ -1,24 +1,27 @@
 {
     "name": "shll-skills",
-    "version": "3.1.0",
-    "description": "SHLL Agent Runtime Skill for OpenClaw",
+    "version": "4.0.0",
+    "description": "SHLL DeFi Agent — CLI + MCP Server for BSC",
     "main": "dist/index.js",
     "bin": {
         "shll-run": "dist/index.js",
-        "shll-onchain-runner": "dist/index.js"
+        "shll-onchain-runner": "dist/index.js",
+        "shll-mcp": "dist/mcp.js"
     },
     "scripts": {
         "build": "tsup",
         "dev": "tsup --watch"
     },
     "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.27.1",
+        "commander": "^12.0.0",
         "viem": "^2.19.0",
-        "commander": "^12.0.0"
+        "zod": "^4.3.6"
     },
     "devDependencies": {
+        "@types/node": "^20.12.7",
         "shll-policy-sdk": "^1.0.0",
         "tsup": "^8.0.2",
-        "typescript": "^5.4.5",
-        "@types/node": "^20.12.7"
+        "typescript": "^5.4.5"
     }
 }
