@@ -16,11 +16,11 @@ import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { bsc } from "viem/chains";
 
 // ── BSC Mainnet defaults ────────────────────────────────
-const DEFAULT_NFA = "0xe98dcdbf370d7b52c9a2b88f79bef514a5375a2b";
-const DEFAULT_GUARD = "0x25d17ea0e3bcb8ca08a2bfe917e817afc05dbbb3";
+const DEFAULT_NFA = "0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b";
+const DEFAULT_GUARD = "0x25d17eA0e3Bcb8CA08a2BFE917E817AFc05dbBB3";
 const DEFAULT_RPC = "https://bsc-dataseed1.binance.org";
 const DEFAULT_LISTING_MANAGER = "0x1f9CE85bD0FF75acc3D92eB79f1Eb472f0865071";
-const DEFAULT_LISTING_ID = "0x792d9b08749fd9739b7e57217daa08a673042fe9e1e1c35545e99acb72c12186";
+const DEFAULT_LISTING_ID = "0x733e9d959da5c1745fa507df6b47537f0945012eff3ceb4b684cd4482f2bc4d3";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
 
@@ -1088,6 +1088,7 @@ policiesCmd.action(async (opts) => {
 
         // Enrich with current config for configurable policies
         const enriched = [];
+        const summaryParts: string[] = [];
         for (const p of policies) {
             const entry: Record<string, unknown> = {
                 name: p.policyTypeName,
@@ -1104,13 +1105,16 @@ policiesCmd.action(async (opts) => {
                         args: [tokenId],
                     });
                     const [maxPerTx, maxPerDay, maxSlippageBps] = limits;
+                    const txBnb = (Number(maxPerTx) / 1e18).toFixed(4);
+                    const dayBnb = (Number(maxPerDay) / 1e18).toFixed(4);
                     entry.currentConfig = {
                         maxPerTx: maxPerTx.toString(),
-                        maxPerTxBnb: (Number(maxPerTx) / 1e18).toFixed(4),
+                        maxPerTxBnb: txBnb,
                         maxPerDay: maxPerDay.toString(),
-                        maxPerDayBnb: (Number(maxPerDay) / 1e18).toFixed(4),
+                        maxPerDayBnb: dayBnb,
                         maxSlippageBps: maxSlippageBps.toString(),
                     };
+                    summaryParts.push(`Max ${txBnb} BNB/tx, ${dayBnb} BNB/day, slippage ${maxSlippageBps}bps`);
                 } catch { /* policy read failed */ }
             }
 
@@ -1122,14 +1126,39 @@ policiesCmd.action(async (opts) => {
                         functionName: "cooldownSeconds",
                         args: [tokenId],
                     });
-                    entry.currentConfig = { cooldownSeconds: (cd as bigint).toString() };
+                    const secs = Number(cd);
+                    entry.currentConfig = { cooldownSeconds: secs.toString() };
+                    summaryParts.push(`Cooldown ${secs}s between transactions`);
                 } catch { /* policy read failed */ }
+            }
+
+            if (p.policyTypeName === "receiver_guard") {
+                summaryParts.push("Outbound transfers restricted (ReceiverGuard)");
+            }
+            if (p.policyTypeName === "dex_whitelist") {
+                summaryParts.push("Only whitelisted DEXs allowed");
+            }
+            if (p.policyTypeName === "token_whitelist") {
+                summaryParts.push("Only whitelisted tokens allowed");
+            }
+            if (p.policyTypeName === "defi_guard") {
+                summaryParts.push("DeFi interactions validated by DeFiGuard");
             }
 
             enriched.push(entry);
         }
 
-        output({ status: "success", tokenId: tokenId.toString(), policies: enriched });
+        const humanSummary = summaryParts.length > 0
+            ? summaryParts.join(" | ")
+            : "No configurable policies found";
+
+        output({
+            status: "success",
+            tokenId: tokenId.toString(),
+            humanSummary,
+            securityNote: "Operator wallet CANNOT withdraw vault funds or transfer Agent NFT — only owner can.",
+            policies: enriched,
+        });
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
@@ -1242,7 +1271,7 @@ configCmd.action(async (opts) => {
 });
 
 // -- Subcommand: listings (query available agent templates) --------
-const DEFAULT_INDEXER = "https://indexer.shll.run";
+const DEFAULT_INDEXER = "https://indexer-mainnet.shll.run";
 
 const listingsCmd = new Command("listings")
     .description("List all available agent templates for rent")
@@ -1478,6 +1507,208 @@ const balanceCmd = new Command("balance")
         }
     });
 
+// -- Subcommand: history (recent vault transactions) ------------------
+const historyCmd = new Command("history")
+    .description("Show recent transactions executed through the agent vault")
+    .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
+    .option("--limit <number>", "Number of transactions to show", "10")
+    .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER);
+
+historyCmd.action(async (opts) => {
+    try {
+        const tokenId = opts.tokenId;
+        const limit = Number(opts.limit) || 10;
+        const indexerUrl = opts.indexer || DEFAULT_INDEXER;
+
+        // Fetch execution activity from indexer
+        const activityRes = await fetch(`${indexerUrl}/api/activity/${tokenId}?limit=${limit}`, {
+            signal: AbortSignal.timeout(10000),
+        });
+
+        if (!activityRes.ok) {
+            output({ status: "error", message: `Indexer returned ${activityRes.status}. Is the indexer running?` });
+            process.exit(1);
+        }
+
+        const data = await activityRes.json() as {
+            items: Array<{
+                txHash: string;
+                target: string;
+                success: boolean;
+                timestamp: string;
+                blockNumber: string;
+                action?: string;
+            }>;
+            count: number;
+        };
+
+        // Also fetch commit failures (policy rejections)
+        let failures: Array<{
+            txHash: string;
+            reason: string;
+            timestamp: string;
+        }> = [];
+        try {
+            const failRes = await fetch(`${indexerUrl}/api/agents/${tokenId}/commit-failures?limit=5`, {
+                signal: AbortSignal.timeout(8000),
+            });
+            if (failRes.ok) {
+                const failData = await failRes.json() as { items: typeof failures };
+                failures = failData.items || [];
+            }
+        } catch { /* non-critical */ }
+
+        const transactions = (data.items || []).map((tx) => {
+            const date = new Date(Number(tx.timestamp) * 1000);
+            return {
+                time: date.toISOString(),
+                txHash: tx.txHash,
+                target: tx.target,
+                success: tx.success,
+                bscscanUrl: `https://bscscan.com/tx/${tx.txHash}`,
+            };
+        });
+
+        output({
+            status: "success",
+            tokenId,
+            transactions,
+            totalShown: transactions.length,
+            recentPolicyRejections: failures.length,
+            policyRejections: failures.length > 0 ? failures : undefined,
+        });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
+// -- Subcommand: status (one-shot security overview) ------------------
+const statusCmd = new Command("status")
+    .description("Show a security overview: vault balance, operator status, policies, and recent activity")
+    .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
+    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
+    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD)
+    .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER);
+
+statusCmd.action(async (opts) => {
+    try {
+        const tokenId = BigInt(opts.tokenId);
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+        const indexerUrl = opts.indexer || DEFAULT_INDEXER;
+
+        // 1. Vault address and BNB balance
+        const vault = await publicClient.readContract({
+            address: nfaAddr,
+            abi: AGENT_NFA_ABI,
+            functionName: "accountOf",
+            args: [tokenId],
+        }) as Address;
+        const bnbBalance = await publicClient.getBalance({ address: vault });
+        const bnbHuman = (Number(bnbBalance) / 1e18).toFixed(6);
+
+        // 2. Operator wallet info
+        let operatorInfo: Record<string, unknown> = { configured: false };
+        const pk = process.env.RUNNER_PRIVATE_KEY;
+        if (pk) {
+            const account = privateKeyToAccount(toHex(pk) as Hex);
+            const opBalance = await publicClient.getBalance({ address: account.address });
+            const opBnb = (Number(opBalance) / 1e18).toFixed(6);
+            operatorInfo = {
+                configured: true,
+                address: account.address,
+                gasBnb: opBnb,
+                gasOk: Number(opBalance) > 1e15,
+            };
+        }
+
+        // 3. Policies summary
+        const client = createPolicyClient(opts);
+        const policies = await client.getPolicies(tokenId);
+        const summaryParts: string[] = [];
+        for (const p of policies) {
+            if (p.policyTypeName === "spending_limit") {
+                try {
+                    const limits = await publicClient.readContract({
+                        address: p.address,
+                        abi: SPENDING_LIMIT_ABI,
+                        functionName: "instanceLimits",
+                        args: [tokenId],
+                    });
+                    const [maxPerTx, maxPerDay] = limits;
+                    summaryParts.push(`Max ${(Number(maxPerTx) / 1e18).toFixed(4)} BNB/tx, ${(Number(maxPerDay) / 1e18).toFixed(4)} BNB/day`);
+                } catch { /* skip */ }
+            }
+            if (p.policyTypeName === "cooldown") {
+                try {
+                    const cd = await publicClient.readContract({
+                        address: p.address,
+                        abi: COOLDOWN_ABI,
+                        functionName: "cooldownSeconds",
+                        args: [tokenId],
+                    });
+                    summaryParts.push(`Cooldown ${Number(cd)}s`);
+                } catch { /* skip */ }
+            }
+            if (p.policyTypeName === "receiver_guard") summaryParts.push("ReceiverGuard active");
+            if (p.policyTypeName === "dex_whitelist") summaryParts.push("DEX whitelist active");
+            if (p.policyTypeName === "token_whitelist") summaryParts.push("Token whitelist active");
+            if (p.policyTypeName === "defi_guard") summaryParts.push("DeFiGuard active");
+        }
+
+        // 4. Recent activity stats from indexer
+        let activityStats: Record<string, unknown> = { available: false };
+        try {
+            const summaryRes = await fetch(`${indexerUrl}/api/agents/${opts.tokenId}/summary`, {
+                signal: AbortSignal.timeout(8000),
+            });
+            if (summaryRes.ok) {
+                const summaryData = await summaryRes.json() as {
+                    totalExecutions: number;
+                    successCount: number;
+                    failCount: number;
+                    lastExecution: string | null;
+                };
+                activityStats = {
+                    available: true,
+                    totalExecutions: summaryData.totalExecutions,
+                    successRate: summaryData.totalExecutions > 0
+                        ? `${((summaryData.successCount / summaryData.totalExecutions) * 100).toFixed(1)}%`
+                        : "N/A",
+                    lastExecution: summaryData.lastExecution
+                        ? new Date(Number(summaryData.lastExecution) * 1000).toISOString()
+                        : null,
+                };
+            }
+        } catch { /* non-critical */ }
+
+        output({
+            status: "success",
+            tokenId: tokenId.toString(),
+            vault: {
+                address: vault,
+                bnbBalance: bnbHuman,
+            },
+            operator: operatorInfo,
+            securitySummary: summaryParts.length > 0 ? summaryParts.join(" | ") : "No policies found",
+            policyCount: policies.length,
+            activity: activityStats,
+            securityNote: "Operator wallet CANNOT withdraw vault funds or transfer Agent NFT.",
+            dashboardUrl: `https://shll.run/dashboard?tokenId=${tokenId}`,
+        });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
 program.addCommand(swapCmd);
 program.addCommand(rawCmd);
 program.addCommand(tokensCmd);
@@ -1494,5 +1725,7 @@ program.addCommand(setupGuideCmd);
 program.addCommand(listingsCmd);
 program.addCommand(genWalletCmd);
 program.addCommand(balanceCmd);
+program.addCommand(historyCmd);
+program.addCommand(statusCmd);
 program.parse(process.argv);
 
