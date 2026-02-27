@@ -150,9 +150,9 @@ function getConfig() {
     const privateKey = process.env.RUNNER_PRIVATE_KEY;
     if (!privateKey) throw new Error("RUNNER_PRIVATE_KEY environment variable is required");
     const rpc = process.env.SHLL_RPC || DEFAULT_RPC;
-    const nfa = process.env.SHLL_NFA || DEFAULT_NFA;
-    const guard = process.env.SHLL_GUARD || DEFAULT_GUARD;
-    return { privateKey, rpc, nfa, guard };
+    // Security: NFA and Guard addresses are hardcoded — never allow env overrides
+    // in MCP mode. This prevents pointing at fake contracts that always approve.
+    return { privateKey, rpc, nfa: DEFAULT_NFA, guard: DEFAULT_GUARD };
 }
 
 function createClients() {
