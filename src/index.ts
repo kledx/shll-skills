@@ -2110,6 +2110,85 @@ lendingInfoCmd.action(async (opts) => {
     }
 });
 
+// ── Subcommand: my-agents ───────────────────────────────
+const OPERATOR_OF_ABI = [{
+    type: "function" as const, name: "operatorOf",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view" as const,
+}] as const;
+
+const myAgentsCmd = new Command("my-agents")
+    .description("List all agents where the current RUNNER_PRIVATE_KEY is the operator")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
+    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
+    .option("--indexer <url>", "Indexer base URL", DEFAULT_INDEXER);
+
+myAgentsCmd.action(async (opts) => {
+    try {
+        if (!process.env.RUNNER_PRIVATE_KEY) {
+            output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
+            process.exit(1);
+        }
+        const operator = privateKeyToAccount(toHex(process.env.RUNNER_PRIVATE_KEY)).address.toLowerCase();
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
+        const indexerUrl = (opts.indexer || DEFAULT_INDEXER).replace(/\/+$/, "");
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+
+        // 1. Fetch all non-template agents from indexer
+        const res = await fetch(`${indexerUrl}/api/agents`);
+        if (!res.ok) {
+            output({ status: "error", message: `Indexer error: ${res.status}` });
+            process.exit(1);
+        }
+        const json = await res.json() as { items?: Array<{ tokenId?: string | number; owner?: string; account?: string; isTemplate?: boolean; agentType?: string }> };
+        const agents = (json.items || []).filter(a => !a.isTemplate && a.tokenId !== undefined);
+
+        if (agents.length === 0) {
+            output({ status: "success", agents: [], message: "No agents found in indexer" });
+            return;
+        }
+
+        // 2. Batch check operatorOf for all agents in parallel
+        const checks = await Promise.all(
+            agents.map(async (a) => {
+                const tokenId = BigInt(a.tokenId!);
+                try {
+                    const op = await publicClient.readContract({
+                        address: nfaAddr,
+                        abi: OPERATOR_OF_ABI,
+                        functionName: "operatorOf",
+                        args: [tokenId],
+                    });
+                    return {
+                        tokenId: tokenId.toString(),
+                        vault: a.account || "",
+                        owner: a.owner || "",
+                        agentType: a.agentType || "unknown",
+                        isOperator: (op as string).toLowerCase() === operator,
+                    };
+                } catch {
+                    return null;
+                }
+            })
+        );
+
+        const myAgents = checks.filter(c => c !== null && c.isOperator);
+        output({
+            status: "success",
+            operator,
+            agents: myAgents,
+            count: myAgents.length,
+        });
+
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        output({ status: "error", message });
+        process.exit(1);
+    }
+});
+
 program.addCommand(swapCmd);
 program.addCommand(rawCmd);
 program.addCommand(tokensCmd);
@@ -2131,6 +2210,7 @@ program.addCommand(statusCmd);
 program.addCommand(lendCmd);
 program.addCommand(redeemCmd);
 program.addCommand(lendingInfoCmd);
+program.addCommand(myAgentsCmd);
 program.parse(process.argv);
 
 

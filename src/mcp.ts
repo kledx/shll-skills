@@ -523,7 +523,65 @@ server.tool(
     }
 );
 
-// ═══════════════════════════════════════════════════════
+// ── Tool: my_agents ─────────────────────────────────────
+const OPERATOR_OF_ABI = [{
+    type: "function" as const, name: "operatorOf",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view" as const,
+}] as const;
+
+const DEFAULT_INDEXER = "https://indexer-mainnet.shll.run";
+
+server.tool(
+    "my_agents",
+    "List all agents where the current operator key is authorized. Returns token IDs, vault addresses, and agent types. Call this first if the user does not specify a token ID.",
+    {},
+    async () => {
+        const { account, publicClient, config } = createClients();
+        const operator = account.address.toLowerCase();
+        const nfaAddr = config.nfa as Address;
+
+        // 1. Fetch all agents from indexer
+        const res = await fetch(`${DEFAULT_INDEXER}/api/agents`);
+        if (!res.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Indexer error: ${res.status}` }) }] };
+        const json = await res.json() as { items?: Array<{ tokenId?: string | number; owner?: string; account?: string; isTemplate?: boolean; agentType?: string }> };
+        const agents = (json.items || []).filter(a => !a.isTemplate && a.tokenId !== undefined);
+
+        if (agents.length === 0) {
+            return { content: [{ type: "text" as const, text: JSON.stringify({ operator, agents: [], count: 0 }) }] };
+        }
+
+        // 2. Batch check operatorOf for all agents
+        const checks = await Promise.all(
+            agents.map(async (a) => {
+                const tokenId = BigInt(a.tokenId!);
+                try {
+                    const op = await publicClient.readContract({
+                        address: nfaAddr,
+                        abi: OPERATOR_OF_ABI,
+                        functionName: "operatorOf",
+                        args: [tokenId],
+                    });
+                    return (op as string).toLowerCase() === operator ? {
+                        tokenId: tokenId.toString(),
+                        vault: a.account || "",
+                        owner: a.owner || "",
+                        agentType: a.agentType || "unknown",
+                    } : null;
+                } catch { return null; }
+            })
+        );
+
+        const myAgents = checks.filter(c => c !== null);
+        return {
+            content: [{
+                type: "text" as const,
+                text: JSON.stringify({ operator, agents: myAgents, count: myAgents.length }),
+            }],
+        };
+    }
+);
 //                    Start Server
 // ═══════════════════════════════════════════════════════
 
