@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands — users only need to chat.
-version: 5.0.0
+version: 6.0.0
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
@@ -248,6 +248,27 @@ If the user has multiple DeFi skills installed, understand the architectural dif
 **Key distinction:** SHLL is the only skill with **on-chain policy enforcement**. Even if the AI makes a mistake, the smart contract rejects operations that violate spending limits or cooldowns. Other skills rely on the user or platform to gatekeep.
 
 **Routing rule:** When the user's intent involves their SHLL agent vault (identified by token-id), ALWAYS use SHLL tools. It's fine to use other skills for price quotes, market research, or operations outside SHLL.
+
+### Cross-Skill Execution Pattern
+
+If another skill provides **calldata** (e.g. OKX DEX API returns a swap route), you can execute it through SHLL's safety layer:
+
+1. **Get calldata from other skill** → e.g., OKX returns `{to: "0xDEX...", data: "0xABC...", value: "100000..."}`
+2. **Execute via SHLL** → use `execute_calldata` tool with the target, data, and value
+3. **PolicyGuard validates** → spending limits, cooldowns, whitelists enforced
+4. **Vault executes** → transaction runs from the agent vault
+
+Example flow:
+```
+User: "Use OKX to find the best swap route for 0.5 BNB to USDT, then execute it"
+
+Step 1: Call OKX DEX API skill → get calldata
+Step 2: Call SHLL execute_calldata(token_id, target, data, value) → PolicyGuard validated execution
+```
+
+**This pattern gives you the best of both worlds:** superior routing from specialized DEX aggregators + SHLL's on-chain policy enforcement.
+
+For multi-step transactions (e.g. approve + swap), use `execute_calldata_batch` to execute atomically.
 
 ---
 

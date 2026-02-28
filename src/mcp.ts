@@ -968,6 +968,107 @@ server.tool(
     }
 );
 
+// ── Tool: execute_calldata ──────────────────────────────
+// Universal safety execution layer: accepts calldata from ANY source
+// (OKX DEX API, Bitget, 1inch, etc.) and routes through PolicyGuard
+server.tool(
+    "execute_calldata",
+    "Execute raw calldata through PolicyGuard safety layer. Use this to execute transactions from other DeFi skills (OKX DEX API, Bitget, 1inch, etc.) with SHLL on-chain policy enforcement. All actions are validated against spending limits, cooldowns, and whitelists before execution.",
+    {
+        token_id: z.string().describe("Agent NFA Token ID"),
+        target: z.string().describe("Target contract address (0x...)"),
+        data: z.string().describe("Transaction calldata hex string"),
+        value: z.string().default("0").describe("Native BNB value in wei (default: 0)"),
+    },
+    async ({ token_id, target, data, value }) => {
+        const { policyClient } = createClients();
+        const tokenId = BigInt(token_id);
+        const action: Action = {
+            target: target as Address,
+            value: BigInt(value),
+            data: data as Hex,
+        };
+
+        // Validate through PolicyGuard (spending limits, cooldowns, whitelists)
+        const sim = await policyClient.validate(tokenId, action);
+        if (!sim.ok) {
+            return {
+                content: [{
+                    type: "text" as const, text: JSON.stringify({
+                        status: "rejected",
+                        reason: sim.reason,
+                        note: "PolicyGuard rejected this calldata. The target contract or operation may not be whitelisted, or it exceeds spending/cooldown limits.",
+                    })
+                }]
+            };
+        }
+
+        const result = await policyClient.execute(tokenId, action, true);
+        return {
+            content: [{
+                type: "text" as const, text: JSON.stringify({
+                    status: "success",
+                    hash: result.hash,
+                    note: "Calldata executed through PolicyGuard. Transaction validated against all on-chain policies.",
+                })
+            }]
+        };
+    }
+);
+
+// ── Tool: execute_calldata_batch ─────────────────────────
+server.tool(
+    "execute_calldata_batch",
+    "Execute multiple raw calldata actions atomically through PolicyGuard. Useful for approve+swap patterns from external DEX aggregators.",
+    {
+        token_id: z.string().describe("Agent NFA Token ID"),
+        actions: z.array(z.object({
+            target: z.string().describe("Target contract address"),
+            data: z.string().describe("Calldata hex"),
+            value: z.string().default("0").describe("BNB value in wei"),
+        })).describe("Array of actions to execute atomically"),
+    },
+    async ({ token_id, actions: rawActions }) => {
+        const { policyClient } = createClients();
+        const tokenId = BigInt(token_id);
+        const actions: Action[] = rawActions.map(a => ({
+            target: a.target as Address,
+            value: BigInt(a.value || "0"),
+            data: a.data as Hex,
+        }));
+
+        // Validate all actions
+        for (let i = 0; i < actions.length; i++) {
+            const sim = await policyClient.validate(tokenId, actions[i]);
+            if (!sim.ok) {
+                return {
+                    content: [{
+                        type: "text" as const, text: JSON.stringify({
+                            status: "rejected",
+                            failedActionIndex: i,
+                            reason: sim.reason,
+                        })
+                    }]
+                };
+            }
+        }
+
+        const result = actions.length === 1
+            ? await policyClient.execute(tokenId, actions[0], true)
+            : await policyClient.executeBatch(tokenId, actions, true);
+
+        return {
+            content: [{
+                type: "text" as const, text: JSON.stringify({
+                    status: "success",
+                    hash: result.hash,
+                    actionsExecuted: actions.length,
+                })
+            }]
+        };
+    }
+);
+
 // ── Tool: generate_wallet ───────────────────────────────
 server.tool(
     "generate_wallet",

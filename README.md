@@ -65,7 +65,7 @@ RUNNER_PRIVATE_KEY=0x... shll-mcp
 
 The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to discover all available tools.
 
-### Available MCP Tools (20 total)
+### Available MCP Tools (22 total)
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -89,6 +89,8 @@ The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to d
 | `config` | Write | Configure risk parameters (spending limits, cooldown) |
 | `setup_guide` | Info | Generate dual-wallet onboarding URL + steps |
 | `generate_wallet` | Info | Create new operator wallet (address + key) |
+| `execute_calldata` | Write | Execute raw calldata from any source through PolicyGuard |
+| `execute_calldata_batch` | Write | Execute multiple calldata actions atomically through PolicyGuard |
 
 ---
 
