@@ -270,6 +270,19 @@ Step 2: Call SHLL execute_calldata(token_id, target, data, value) → PolicyGuar
 
 For multi-step transactions (e.g. approve + swap), use `execute_calldata_batch` to execute atomically.
 
+⚠️ **CRITICAL SECURITY: Verify Recipient Address**
+
+Before executing calldata from an external source, you **MUST verify** that any `recipient`, `to`, or `receiver` address embedded in the calldata matches the agent's vault address. Use the `portfolio` tool to get the vault address first.
+
+**Why:** A compromised or malicious API could return valid-looking swap calldata but with the recipient set to an attacker's address. PolicyGuard validates the target contract and spending limits, but does NOT parse internal calldata fields like `recipient`.
+
+```
+Step 0: portfolio(token_id) → get vault address
+Step 1: Get calldata from OKX/Bitget/1inch
+Step 2: Verify that 'recipient' in calldata == vault address
+Step 3: execute_calldata(token_id, target, data, value)
+```
+
 ---
 
 ## LINKS

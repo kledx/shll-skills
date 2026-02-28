@@ -973,11 +973,11 @@ server.tool(
 // (OKX DEX API, Bitget, 1inch, etc.) and routes through PolicyGuard
 server.tool(
     "execute_calldata",
-    "Execute raw calldata through PolicyGuard safety layer. Use this to execute transactions from other DeFi skills (OKX DEX API, Bitget, 1inch, etc.) with SHLL on-chain policy enforcement. All actions are validated against spending limits, cooldowns, and whitelists before execution.",
+    "Execute raw calldata through PolicyGuard safety layer. Use this to execute transactions from other DeFi skills (OKX DEX API, Bitget, 1inch, etc.) with SHLL on-chain policy enforcement. IMPORTANT: Before calling, verify that any 'recipient' or 'to' address embedded in the calldata matches the agent's vault address (use the 'portfolio' tool to check). This prevents funds from being routed to an unintended address.",
     {
         token_id: z.string().describe("Agent NFA Token ID"),
-        target: z.string().describe("Target contract address (0x...)"),
-        data: z.string().describe("Transaction calldata hex string"),
+        target: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Must be a valid Ethereum address").describe("Target contract address (0x...)"),
+        data: z.string().regex(/^0x[0-9a-fA-F]*$/, "Must be a valid hex string starting with 0x").describe("Transaction calldata hex string"),
         value: z.string().default("0").describe("Native BNB value in wei (default: 0)"),
     },
     async ({ token_id, target, data, value }) => {
@@ -1023,8 +1023,8 @@ server.tool(
     {
         token_id: z.string().describe("Agent NFA Token ID"),
         actions: z.array(z.object({
-            target: z.string().describe("Target contract address"),
-            data: z.string().describe("Calldata hex"),
+            target: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Must be a valid Ethereum address").describe("Target contract address"),
+            data: z.string().regex(/^0x[0-9a-fA-F]*$/, "Must be valid hex").describe("Calldata hex"),
             value: z.string().default("0").describe("BNB value in wei"),
         })).describe("Array of actions to execute atomically"),
     },
