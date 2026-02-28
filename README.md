@@ -65,18 +65,30 @@ RUNNER_PRIVATE_KEY=0x... shll-mcp
 
 The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to discover all available tools.
 
-### Available MCP Tools
+### Available MCP Tools (20 total)
 
 | Tool | Type | Description |
 |------|------|-------------|
 | `portfolio` | Read | Vault holdings + token balances |
 | `balance` | Read | Operator wallet gas balance |
 | `price` | Read | Real-time token price (DexScreener) |
+| `search` | Read | Search token by name/symbol on BSC |
+| `tokens` | Read | List known token symbols + addresses |
 | `lending_info` | Read | Venus Protocol supply balances + APY |
+| `policies` | Read | View active on-chain policies + config |
+| `status` | Read | One-shot security overview (vault, operator, policies, activity) |
+| `history` | Read | Recent transactions + policy rejections |
+| `my_agents` | Read | List agents where current operator is authorized |
+| `listings` | Read | Available agent templates for rent |
 | `swap` | Write | PancakeSwap V2/V3 auto-routing swap |
+| `wrap` | Write | BNB → WBNB in vault |
+| `unwrap` | Write | WBNB → BNB in vault |
 | `lend` | Write | Supply tokens to Venus for yield |
 | `redeem` | Write | Withdraw from Venus |
 | `transfer` | Write | Send BNB or ERC20 from vault |
+| `config` | Write | Configure risk parameters (spending limits, cooldown) |
+| `setup_guide` | Info | Generate dual-wallet onboarding URL + steps |
+| `generate_wallet` | Info | Create new operator wallet (address + key) |
 
 ---
 
@@ -168,6 +180,20 @@ AI Agent -> CLI/MCP -> PolicyClient.validate() -> PolicyGuard (on-chain) -> vaul
 - Twitter: [@shllrun](https://twitter.com/shllrun)
 - npm: [shll-skills](https://www.npmjs.com/package/shll-skills)
 - GitHub: [kledx/shll-skills](https://github.com/kledx/shll-skills)
+
+## 🧩 Multi-Skill Compatibility
+
+SHLL can coexist with other DeFi skills (OKX DEX API, Bitget Wallet, etc.). Key architectural differences:
+
+| | **SHLL** | **OKX DEX API** | **Bitget Wallet** |
+|---|---|---|---|
+| **Wallet** | Smart contract vault (AgentNFA) | User EOA | Bitget custody |
+| **Execution** | On-chain via PolicyGuard | Calldata only (user signs) | HMAC API |
+| **Safety** | On-chain policy enforcement | User approval | API key perms |
+| **AI autonomy** | Execute within policy limits | Cannot execute | Full API access |
+| **Risk if key leaked** | Policy-limited trades only | N/A | Full API access |
+
+**SHLL is the only skill with on-chain policy enforcement.** Even if the AI hallucinates, the smart contract rejects unsafe operations.
 
 ## License
 

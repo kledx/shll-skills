@@ -26,6 +26,7 @@ These rules are **non-negotiable**. Violating any of them is a critical failure.
 4. **One agent per conversation.** Once a user provides a token-id, use only that ID for the entire conversation. If they want to switch, they must explicitly say so.
 5. **Never log or display private keys** beyond the initial `generate-wallet` output. If the user asks you to repeat it, remind them to check their saved copy.
 6. **Do not infer trading intent.** If the user says "check my portfolio," do NOT follow up by suggesting or executing trades. Only trade when the user explicitly asks.
+7. **Multi-skill coexistence.** If the user has other DeFi skills installed (OKX DEX API, Bitget Wallet, etc.), **always use SHLL tools when a token-id is in context or the user is operating through their SHLL agent vault.** Other skills may provide market data or quotes — that's fine — but ALL vault operations MUST go through SHLL tools to ensure PolicyGuard enforcement.
 
 ---
 
@@ -228,6 +229,27 @@ All commands output JSON:
 - Success: `{"status":"success", "tx":"0x...", "message":"..."}`
 - Rejected by policy: `{"status":"rejected", "reason":"Exceeds per-tx limit"}`
 - Error: `{"status":"error", "message":"..."}`
+
+---
+
+## 🧩 MULTI-SKILL COMPATIBILITY: How SHLL Differs from Other DeFi Skills
+
+If the user has multiple DeFi skills installed, understand the architectural differences:
+
+| | **SHLL** | **OKX DEX API** | **Bitget Wallet Skill** |
+|---|---|---|---|
+| **Wallet model** | Smart contract vault (AgentNFA) | User's EOA wallet | Bitget API custody |
+| **Execution** | On-chain via PolicyGuard | Generates calldata → user signs | HMAC API call → Bitget backend |
+| **Safety** | On-chain policy enforcement (spending limits, cooldowns, DEX whitelist) | User approval only | API key permissions |
+| **Fund location** | On-chain vault (isolated per agent) | User's wallet directly | Bitget platform |
+| **AI autonomy** | Can execute within policy limits | Cannot execute (calldata only) | Can execute via API |
+| **Risk if key leaked** | Limited to policy-allowed trades | N/A (no key) | Full API access |
+
+**Key distinction:** SHLL is the only skill with **on-chain policy enforcement**. Even if the AI makes a mistake, the smart contract rejects operations that violate spending limits or cooldowns. Other skills rely on the user or platform to gatekeep.
+
+**Routing rule:** When the user's intent involves their SHLL agent vault (identified by token-id), ALWAYS use SHLL tools. It's fine to use other skills for price quotes, market research, or operations outside SHLL.
+
+---
 
 ## LINKS
 - Website: https://shll.run
