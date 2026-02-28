@@ -153,6 +153,11 @@ const WBNB_ABI = [
 const SPENDING_LIMIT_ABI = [
     { type: "function" as const, name: "setLimits", inputs: [{ name: "instanceId", type: "uint256" }, { name: "maxPerTx", type: "uint256" }, { name: "maxPerDay", type: "uint256" }, { name: "maxSlippageBps", type: "uint256" }], outputs: [], stateMutability: "nonpayable" as const },
     { type: "function" as const, name: "instanceLimits", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "maxPerTx", type: "uint256" }, { name: "maxPerDay", type: "uint256" }, { name: "maxSlippageBps", type: "uint256" }], stateMutability: "view" as const },
+    { type: "function" as const, name: "tokenRestrictionEnabled", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" as const },
+    { type: "function" as const, name: "getTokenList", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "", type: "address[]" }], stateMutability: "view" as const },
+    { type: "function" as const, name: "addToken", inputs: [{ name: "instanceId", type: "uint256" }, { name: "token", type: "address" }], outputs: [], stateMutability: "nonpayable" as const },
+    { type: "function" as const, name: "removeToken", inputs: [{ name: "instanceId", type: "uint256" }, { name: "token", type: "address" }], outputs: [], stateMutability: "nonpayable" as const },
+    { type: "function" as const, name: "setTokenRestriction", inputs: [{ name: "instanceId", type: "uint256" }, { name: "enabled", type: "bool" }], outputs: [], stateMutability: "nonpayable" as const },
 ] as const;
 
 const COOLDOWN_ABI = [
@@ -232,6 +237,27 @@ async function checkAgentExpiry(tokenId: bigint) {
         };
     }
     return { expired: false };
+}
+
+// Policy rejection → actionable user guidance
+function policyRejectionHelp(reason: string | undefined, tokenId: string): Record<string, string> {
+    const consoleUrl = `https://shll.run/agent/0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b/${tokenId}/console/safety`;
+    const r = reason ?? "";
+    if (r.includes("Approve spender not allowed"))
+        return { explanation: "The DEX router address is not in the approved spender whitelist. This is a platform-level security setting.", action: "Contact the Agent owner to approve this router, or use a different DEX.", consoleUrl };
+    if (r.includes("Target not allowed"))
+        return { explanation: "The contract address is not in the DeFi target whitelist.", action: "Enable the corresponding DeFi Pack in Console > Safety, or contact the Agent owner.", consoleUrl };
+    if (r.includes("Token not in whitelist"))
+        return { explanation: "Token restriction is ON and this token is not whitelisted.", action: `Add the token to the whitelist or disable token restriction at: ${consoleUrl}`, consoleUrl };
+    if (r.includes("Exceeds per-tx limit"))
+        return { explanation: "Transaction value exceeds the per-transaction spending limit.", action: `Reduce the amount, or increase the limit at: ${consoleUrl}`, consoleUrl };
+    if (r.includes("Daily limit"))
+        return { explanation: "Daily spending limit would be exceeded.", action: `Wait until tomorrow, or increase the daily limit at: ${consoleUrl}`, consoleUrl };
+    if (r.includes("Approve exceeds limit"))
+        return { explanation: "The approve amount exceeds the configured approve limit.", action: `Reduce the amount, or increase the approve limit at: ${consoleUrl}`, consoleUrl };
+    if (r.includes("Cooldown"))
+        return { explanation: "Cooldown period has not elapsed since the last transaction.", action: "Wait for the cooldown to expire before retrying.", consoleUrl };
+    return { explanation: "Transaction was rejected by an on-chain security policy.", action: `Review your security settings at: ${consoleUrl}`, consoleUrl };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -421,10 +447,48 @@ server.tool(
             }
         }
 
-        // Validate + execute
+        // Validate + execute (with V3→V2 fallback on approve rejection)
         for (const action of actions) {
             const sim = await policyClient.validate(tokenId, action);
-            if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason }) }] };
+            if (!sim.ok) {
+                // If V3 approve was rejected, try V2 fallback
+                if (useV3 && sim.reason?.includes("Approve spender not allowed") && v2Available) {
+                    const v2Actions: Action[] = [];
+                    const v2Router = PANCAKE_V2_ROUTER as Address;
+                    const v2MinOut = (v2Quote * BigInt(100 - slippage)) / 100n;
+                    if (!isNativeIn) {
+                        const allow = await publicClient.readContract({ address: fromToken.address, abi: ERC20_ABI, functionName: "allowance", args: [vault, v2Router] }).catch(() => 0n);
+                        if (allow < amountIn) {
+                            v2Actions.push({ target: fromToken.address, value: 0n, data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [v2Router, amountIn] }) });
+                        }
+                    }
+                    const v2Path: Address[] = tokenInAddr.toLowerCase() !== WBNB.toLowerCase() && tokenOutAddr.toLowerCase() !== WBNB.toLowerCase()
+                        ? [tokenInAddr, WBNB as Address, tokenOutAddr] : [tokenInAddr, tokenOutAddr];
+                    if (isNativeIn) {
+                        v2Actions.push({ target: v2Router, value: amountIn, data: encodeFunctionData({ abi: SWAP_EXACT_ETH_ABI, functionName: "swapExactETHForTokens", args: [v2MinOut, v2Path, vault, deadline] }) });
+                    } else {
+                        v2Actions.push({ target: v2Router, value: 0n, data: encodeFunctionData({ abi: SWAP_EXACT_TOKENS_ABI, functionName: "swapExactTokensForTokens", args: [amountIn, v2MinOut, v2Path, vault, deadline] }) });
+                    }
+                    // Validate V2 fallback
+                    for (const v2a of v2Actions) {
+                        const v2Sim = await policyClient.validate(tokenId, v2a);
+                        if (!v2Sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: v2Sim.reason, ...policyRejectionHelp(v2Sim.reason, token_id) }) }] };
+                    }
+                    const v2Result = v2Actions.length === 1
+                        ? await policyClient.execute(tokenId, v2Actions[0], true)
+                        : await policyClient.executeBatch(tokenId, v2Actions, true);
+                    return {
+                        content: [{
+                            type: "text" as const, text: JSON.stringify({
+                                status: "success", hash: v2Result.hash, dex: "v2",
+                                quote: v2Quote.toString(), minOut: v2MinOut.toString(),
+                                note: "V3 was rejected by policy (Approve spender not allowed). Auto-switched to V2.",
+                            })
+                        }]
+                    };
+                }
+                return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason, ...policyRejectionHelp(sim.reason, token_id) }) }] };
+            }
         }
 
         const result = actions.length === 1
@@ -477,7 +541,7 @@ server.tool(
 
         for (const action of actions) {
             const sim = await policyClient.validate(tokenId, action);
-            if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason }) }] };
+            if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason, ...policyRejectionHelp(sim.reason, token_id) }) }] };
         }
 
         const result = actions.length === 1
@@ -768,7 +832,15 @@ server.tool(
                     const [maxPerTx, maxPerDay, maxSlippageBps] = limits;
                     const txBnb = (Number(maxPerTx) / 1e18).toFixed(4);
                     const dayBnb = (Number(maxPerDay) / 1e18).toFixed(4);
-                    entry.currentConfig = { maxPerTx: maxPerTx.toString(), maxPerTxBnb: txBnb, maxPerDay: maxPerDay.toString(), maxPerDayBnb: dayBnb, maxSlippageBps: maxSlippageBps.toString() };
+                    // Also read token restriction status
+                    let tokenRestriction: Record<string, unknown> = {};
+                    try {
+                        const enabled = await publicClient.readContract({ address: p.address, abi: SPENDING_LIMIT_ABI, functionName: "tokenRestrictionEnabled", args: [tokenId] }) as boolean;
+                        const tokenList = await publicClient.readContract({ address: p.address, abi: SPENDING_LIMIT_ABI, functionName: "getTokenList", args: [tokenId] }) as string[];
+                        tokenRestriction = { tokenRestrictionEnabled: enabled, whitelistedTokens: tokenList, whitelistedTokenCount: tokenList.length };
+                        summaryParts.push(enabled ? `Token whitelist ON (${tokenList.length} tokens)` : "Token whitelist OFF (any token allowed)");
+                    } catch { /* token restriction not available on this version */ }
+                    entry.currentConfig = { maxPerTx: maxPerTx.toString(), maxPerTxBnb: txBnb, maxPerDay: maxPerDay.toString(), maxPerDayBnb: dayBnb, maxSlippageBps: maxSlippageBps.toString(), ...tokenRestriction };
                     summaryParts.push(`Max ${txBnb} BNB/tx, ${dayBnb} BNB/day, slippage ${maxSlippageBps}bps`);
                 } catch { /* policy read failed */ }
             }
@@ -790,6 +862,42 @@ server.tool(
 
         const humanSummary = summaryParts.length > 0 ? summaryParts.join(" | ") : "No configurable policies found";
         return { content: [{ type: "text" as const, text: JSON.stringify({ tokenId: token_id, humanSummary, securityNote: "Operator wallet CANNOT withdraw vault funds or transfer Agent NFT.", policies: enriched }) }] };
+    }
+);
+
+// ── Tool: token_restriction ─────────────────────────────
+server.tool(
+    "token_restriction",
+    "Check token whitelist restriction status. Shows whether token trading is restricted and which tokens are whitelisted.",
+    { token_id: z.string().describe("Agent NFA Token ID") },
+    async ({ token_id }) => {
+        const { publicClient, policyClient } = createClients();
+        const tokenId = BigInt(token_id);
+        const policies = await policyClient.getPolicies(tokenId);
+        const spendingPolicy = policies.find(p => p.policyTypeName === "spending_limit");
+        if (!spendingPolicy) {
+            return { content: [{ type: "text" as const, text: JSON.stringify({ tokenId: token_id, error: "No spending_limit policy found — token restriction is not available for this agent." }) }] };
+        }
+        try {
+            const [enabled, tokenList] = await Promise.all([
+                publicClient.readContract({ address: spendingPolicy.address, abi: SPENDING_LIMIT_ABI, functionName: "tokenRestrictionEnabled", args: [tokenId] }) as Promise<boolean>,
+                publicClient.readContract({ address: spendingPolicy.address, abi: SPENDING_LIMIT_ABI, functionName: "getTokenList", args: [tokenId] }) as Promise<string[]>,
+            ]);
+            const result = {
+                tokenId: token_id,
+                tokenRestrictionEnabled: enabled,
+                status: enabled ? "ON — only whitelisted tokens can be traded" : "OFF — any token can be traded",
+                whitelistedTokens: tokenList,
+                whitelistedTokenCount: tokenList.length,
+                manageUrl: `https://shll.run/agent/0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b/${token_id}/console/safety`,
+                note: enabled
+                    ? "To add/remove tokens or disable restriction, visit the management URL above (requires connected wallet as renter/owner)."
+                    : "Token restriction is disabled. The agent can trade any token. To enable, visit the management URL.",
+            };
+            return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+        } catch {
+            return { content: [{ type: "text" as const, text: JSON.stringify({ tokenId: token_id, error: "Failed to read token restriction — the SpendingLimitPolicy may not support this feature." }) }] };
+        }
     }
 );
 
