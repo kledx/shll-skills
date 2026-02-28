@@ -266,7 +266,7 @@ function policyRejectionHelp(reason: string | undefined, tokenId: string): Recor
 
 const server = new McpServer({
     name: "shll-defi",
-    version: "5.2.0",
+    version: "5.3.0",
 });
 
 // ── Tool: portfolio ─────────────────────────────────────
@@ -575,7 +575,7 @@ server.tool(
         const action: Action = { target: vTokenAddr, value: 0n, data };
 
         const sim = await policyClient.validate(tokenId, action);
-        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason }) }] };
+        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason, ...policyRejectionHelp(sim.reason, token_id) }) }] };
 
         const result = await policyClient.execute(tokenId, action, true);
         return { content: [{ type: "text" as const, text: JSON.stringify({ status: "success", hash: result.hash, protocol: "venus", action: "redeem", token: symbol, amount }) }] };
@@ -649,7 +649,7 @@ server.tool(
         }
 
         const sim = await policyClient.validate(tokenId, action);
-        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason }) }] };
+        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason, ...policyRejectionHelp(sim.reason, token_id) }) }] };
 
         const result = await policyClient.execute(tokenId, action, true);
         return { content: [{ type: "text" as const, text: JSON.stringify({ status: "success", hash: result.hash, token, amount, to: recipient }) }] };
@@ -742,7 +742,7 @@ server.tool(
         const action: Action = { target: WBNB as Address, value: amt, data };
 
         const sim = await policyClient.validate(tokenId, action);
-        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason }) }] };
+        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason, ...policyRejectionHelp(sim.reason, token_id) }) }] };
 
         const result = await policyClient.execute(tokenId, action, true);
         return { content: [{ type: "text" as const, text: JSON.stringify({ status: "success", hash: result.hash, message: `Wrapped ${amount} BNB → WBNB` }) }] };
@@ -766,7 +766,7 @@ server.tool(
         const action: Action = { target: WBNB as Address, value: 0n, data };
 
         const sim = await policyClient.validate(tokenId, action);
-        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason }) }] };
+        if (!sim.ok) return { content: [{ type: "text" as const, text: JSON.stringify({ status: "rejected", reason: sim.reason, ...policyRejectionHelp(sim.reason, token_id) }) }] };
 
         const result = await policyClient.execute(tokenId, action, true);
         return { content: [{ type: "text" as const, text: JSON.stringify({ status: "success", hash: result.hash, message: `Unwrapped ${amount} WBNB → BNB` }) }] };
