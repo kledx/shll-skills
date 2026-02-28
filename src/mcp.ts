@@ -191,13 +191,56 @@ function createClients() {
     return { account, publicClient, policyClient, config };
 }
 
+// Expiry pre-check: prevents write operations on expired agents with clear error
+const AGENT_NFA_EXPIRY_ABI = [
+    { name: "operatorExpiresOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
+    { name: "userExpires", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
+] as const;
+
+async function checkAgentExpiry(tokenId: bigint) {
+    const config = getConfig();
+    const pc = createPublicClient({ chain: bsc, transport: http(config.rpc) });
+    const [operatorExpires, userExpires] = await Promise.all([
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_EXPIRY_ABI, functionName: "operatorExpiresOf", args: [tokenId] }) as Promise<bigint>,
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_EXPIRY_ABI, functionName: "userExpires", args: [tokenId] }) as Promise<bigint>,
+    ]);
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (now > operatorExpires) {
+        return {
+            expired: true,
+            content: [{
+                type: "text" as const, text: JSON.stringify({
+                    status: "error",
+                    message: `Agent token-id ${tokenId} operator authorization has EXPIRED (expired at ${new Date(Number(operatorExpires) * 1000).toISOString()}). Please renew at https://shll.run/me or use a different token-id.`,
+                    expiredAt: new Date(Number(operatorExpires) * 1000).toISOString(),
+                    action: "renew",
+                })
+            }],
+        };
+    }
+    if (now > userExpires) {
+        return {
+            expired: true,
+            content: [{
+                type: "text" as const, text: JSON.stringify({
+                    status: "error",
+                    message: `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}). Please renew at https://shll.run/me or use a different token-id.`,
+                    expiredAt: new Date(Number(userExpires) * 1000).toISOString(),
+                    action: "renew",
+                })
+            }],
+        };
+    }
+    return { expired: false };
+}
+
 // ═══════════════════════════════════════════════════════
 //                    MCP Server
 // ═══════════════════════════════════════════════════════
 
 const server = new McpServer({
     name: "shll-defi",
-    version: "5.0.0",
+    version: "5.2.0",
 });
 
 // ── Tool: portfolio ─────────────────────────────────────
@@ -306,6 +349,7 @@ server.tool(
     async ({ token_id, from, to, amount, dex, slippage }) => {
         const { publicClient, policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const vault = await policyClient.getVault(tokenId);
 
         const fromToken = resolveToken(from);
@@ -410,6 +454,7 @@ server.tool(
     async ({ token_id, token, amount }) => {
         const { publicClient, policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const symbol = token.toUpperCase();
         const vTokenAddr = VENUS_VTOKENS[symbol];
         if (!vTokenAddr) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Unsupported: ${symbol}. Use: ${Object.keys(VENUS_VTOKENS).join(", ")}` }) }] };
@@ -455,6 +500,7 @@ server.tool(
     async ({ token_id, token, amount }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const symbol = token.toUpperCase();
         const vTokenAddr = VENUS_VTOKENS[symbol];
         if (!vTokenAddr) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Unsupported: ${symbol}` }) }] };
@@ -519,6 +565,7 @@ server.tool(
     async ({ token_id, token, amount, to }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const tokenInfo = resolveToken(token);
         const amt = parseAmount(amount, tokenInfo.decimals);
         const recipient = to as Address;
@@ -546,18 +593,16 @@ server.tool(
 );
 
 // ── Tool: my_agents ─────────────────────────────────────
-const OPERATOR_OF_ABI = [{
-    type: "function" as const, name: "operatorOf",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view" as const,
-}] as const;
+const MY_AGENTS_ABI = [
+    { type: "function" as const, name: "operatorOf", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" as const },
+    { type: "function" as const, name: "operatorExpiresOf", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" as const },
+] as const;
 
 const DEFAULT_INDEXER = "https://indexer-mainnet.shll.run";
 
 server.tool(
     "my_agents",
-    "List all agents where the current operator key is authorized. Returns token IDs, vault addresses, and agent types. Call this first if the user does not specify a token ID.",
+    "List all agents where the current operator key is or was authorized. Returns active agents and expired agents that need renewal.",
     {},
     async () => {
         const { account, publicClient, config } = createClients();
@@ -574,23 +619,34 @@ server.tool(
             return { content: [{ type: "text" as const, text: JSON.stringify({ operator, agents: [], count: 0 }) }] };
         }
 
-        // 2. Batch check operatorOf for all agents
+        // 2. Check operatorOf AND operatorExpiresOf for all agents
         const checks = await Promise.all(
             agents.map(async (a) => {
                 const tokenId = BigInt(a.tokenId!);
                 try {
-                    const op = await publicClient.readContract({
-                        address: nfaAddr,
-                        abi: OPERATOR_OF_ABI,
-                        functionName: "operatorOf",
-                        args: [tokenId],
-                    });
-                    return (op as string).toLowerCase() === operator ? {
-                        tokenId: tokenId.toString(),
-                        vault: a.account || "",
-                        owner: a.owner || "",
-                        agentType: a.agentType || "unknown",
-                    } : null;
+                    const [op, opExpires] = await Promise.all([
+                        publicClient.readContract({ address: nfaAddr, abi: MY_AGENTS_ABI, functionName: "operatorOf", args: [tokenId] }) as Promise<string>,
+                        publicClient.readContract({ address: nfaAddr, abi: MY_AGENTS_ABI, functionName: "operatorExpiresOf", args: [tokenId] }) as Promise<bigint>,
+                    ]);
+                    const isActive = op.toLowerCase() === operator;
+                    const now = BigInt(Math.floor(Date.now() / 1000));
+                    const isExpired = !isActive && Number(opExpires) > 0 && now > opExpires;
+
+                    if (isActive) {
+                        return {
+                            tokenId: tokenId.toString(), vault: a.account || "", owner: a.owner || "",
+                            agentType: a.agentType || "unknown", status: "active" as const,
+                            operatorExpires: new Date(Number(opExpires) * 1000).toISOString(),
+                        };
+                    } else if (isExpired) {
+                        return {
+                            tokenId: tokenId.toString(), vault: a.account || "", owner: a.owner || "",
+                            agentType: a.agentType || "unknown", status: "expired" as const,
+                            operatorExpires: new Date(Number(opExpires) * 1000).toISOString(),
+                            note: "Operator authorization expired. Renew at https://shll.run/me",
+                        };
+                    }
+                    return null;
                 } catch { return null; }
             })
         );
@@ -616,6 +672,7 @@ server.tool(
     async ({ token_id, amount }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const amt = parseEther(amount);
         const data = encodeFunctionData({ abi: WBNB_ABI, functionName: "deposit" });
         const action: Action = { target: WBNB as Address, value: amt, data };
@@ -639,6 +696,7 @@ server.tool(
     async ({ token_id, amount }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const amt = parseEther(amount);
         const data = encodeFunctionData({ abi: WBNB_ABI, functionName: "withdraw", args: [amt] });
         const action: Action = { target: WBNB as Address, value: 0n, data };
@@ -862,6 +920,7 @@ server.tool(
 
         const { account, publicClient, policyClient, config } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const walletClient = createWalletClient({ account, chain: bsc, transport: http(config.rpc) });
         const policies = await policyClient.getPolicies(tokenId);
         const results: string[] = [];
@@ -983,6 +1042,7 @@ server.tool(
     async ({ token_id, target, data, value }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const action: Action = {
             target: target as Address,
             value: BigInt(value),
@@ -1031,6 +1091,7 @@ server.tool(
     async ({ token_id, actions: rawActions }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
         const actions: Action[] = rawActions.map(a => ({
             target: a.target as Address,
             value: BigInt(a.value || "0"),
