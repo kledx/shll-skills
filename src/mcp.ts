@@ -266,7 +266,7 @@ function policyRejectionHelp(reason: string | undefined, tokenId: string): Recor
 
 const server = new McpServer({
     name: "shll-defi",
-    version: "5.3.1",
+    version: "5.3.2",
 });
 
 // ── Tool: portfolio ─────────────────────────────────────
