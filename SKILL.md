@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands — users only need to chat.
-version: 6.0.0
+version: 5.3.1
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
@@ -196,6 +196,8 @@ Supported lending tokens: **BNB, USDT, USDC, BUSD**
 | `shll-run config -k <ID> --tx-limit <BNB> --daily-limit <BNB> --cooldown <SEC>` | Tighten risk limits |
 | `shll-run status -k <ID>` | One-shot security overview (vault, operator, policies, activity) |
 | `shll-run history -k <ID> [--limit N]` | Recent transactions + policy rejections |
+| `shll-run my-agents` | List all agents where current operator key is authorized |
+| `shll-run token-restriction -k <ID>` | View token whitelist restriction status + whitelisted tokens |
 
 **Supported tokens:** BNB, USDC, USDT, WBNB, CAKE, ETH, BTCB, DAI, BUSD, or any 0x address.
 

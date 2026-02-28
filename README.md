@@ -65,7 +65,7 @@ RUNNER_PRIVATE_KEY=0x... shll-mcp
 
 The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to discover all available tools.
 
-### Available MCP Tools (22 total)
+### Available MCP Tools (24 total)
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -91,6 +91,7 @@ The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to d
 | `generate_wallet` | Info | Create new operator wallet (address + key) |
 | `execute_calldata` | Write | Execute raw calldata from any source through PolicyGuard |
 | `execute_calldata_batch` | Write | Execute multiple calldata actions atomically through PolicyGuard |
+| `token_restriction` | Read | View token whitelist restriction status + whitelisted tokens |
 
 ---
 
@@ -172,9 +173,9 @@ AI Agent -> CLI/MCP -> PolicyClient.validate() -> PolicyGuard (on-chain) -> vaul
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `RUNNER_PRIVATE_KEY` | Yes | Operator wallet key (~$1 BNB for gas) |
-| `SHLL_RPC` | No | BSC RPC URL override |
-| `SHLL_NFA` | No | AgentNFA contract override |
-| `SHLL_GUARD` | No | PolicyGuard contract override |
+| `SHLL_RPC` | No | BSC RPC URL override (default: public BSC RPC) |
+
+> **Note:** Contract addresses (AgentNFA, PolicyGuard) are hardcoded for security reasons. Override env vars are intentionally not supported to prevent supply-chain attacks.
 
 ## Links
 
