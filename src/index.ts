@@ -20,7 +20,7 @@ const DEFAULT_NFA = "0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b";
 const DEFAULT_GUARD = "0x25d17eA0e3Bcb8CA08a2BFE917E817AFc05dbBB3";
 const DEFAULT_RPC = "https://bsc-dataseed1.binance.org";
 const DEFAULT_LISTING_MANAGER = "0x1f9CE85bD0FF75acc3D92eB79f1Eb472f0865071";
-const DEFAULT_LISTING_ID = "0x733e9d959da5c1745fa507df6b47537f0945012eff3ceb4b684cd4482f2bc4d3";
+const DEFAULT_LISTING_ID = "0xdea70e684f33fe9966753d3008c8c7ddd4422e04751b2198d03d82e97affca22";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const PANCAKE_V3_SMART_ROUTER = "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
@@ -325,8 +325,61 @@ function createClient(options: Record<string, string>): PolicyClient {
         chainId: 56,
     });
 }
-
 // ── Program ─────────────────────────────────────────────
+
+// Pre-check: prevents write operations on expired/unauthorized agents with clear error
+const AGENT_NFA_ACCESS_ABI = [
+    { name: "operatorExpiresOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
+    { name: "userExpires", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
+    { name: "operatorOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
+    { name: "userOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
+    { name: "ownerOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
+] as const;
+
+async function checkAccess(opts: Record<string, string>, tokenId: bigint) {
+    const rpcUrl = opts.rpc || DEFAULT_RPC;
+    const nfa = (opts.nfaAddress || DEFAULT_NFA) as Address;
+    const pk = toHex(process.env.RUNNER_PRIVATE_KEY || "");
+    const account = privateKeyToAccount(pk);
+    const pc = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+    const [operatorExpires, userExpires, operator, renter, owner] = await Promise.all([
+        pc.readContract({ address: nfa, abi: AGENT_NFA_ACCESS_ABI, functionName: "operatorExpiresOf", args: [tokenId] }) as Promise<bigint>,
+        pc.readContract({ address: nfa, abi: AGENT_NFA_ACCESS_ABI, functionName: "userExpires", args: [tokenId] }) as Promise<bigint>,
+        pc.readContract({ address: nfa, abi: AGENT_NFA_ACCESS_ABI, functionName: "operatorOf", args: [tokenId] }) as Promise<Address>,
+        pc.readContract({ address: nfa, abi: AGENT_NFA_ACCESS_ABI, functionName: "userOf", args: [tokenId] }) as Promise<Address>,
+        pc.readContract({ address: nfa, abi: AGENT_NFA_ACCESS_ABI, functionName: "ownerOf", args: [tokenId] }) as Promise<Address>,
+    ]);
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (now > userExpires) {
+        output({ status: "error", message: `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}). Please renew at https://shll.run/me` });
+        process.exit(1);
+    }
+    if (now > operatorExpires) {
+        output({ status: "error", message: `Agent token-id ${tokenId} operator authorization has EXPIRED (expired at ${new Date(Number(operatorExpires) * 1000).toISOString()}). Please re-authorize via setup_guide.` });
+        process.exit(1);
+    }
+    const runnerAddr = account.address.toLowerCase();
+    const isOperator = operator.toLowerCase() === runnerAddr;
+    const isRenter = renter.toLowerCase() === runnerAddr;
+    const isOwner = owner.toLowerCase() === runnerAddr;
+    if (!isOperator && !isRenter && !isOwner) {
+        output({
+            status: "error",
+            message: `RUNNER_PRIVATE_KEY wallet (${account.address}) is NOT authorized for token-id ${tokenId}. On-chain operator is ${operator}.`,
+            yourWallet: account.address,
+            onChainOperator: operator,
+            onChainRenter: renter,
+            onChainOwner: owner,
+            howToFix: [
+                `1. Use 'setup_guide' command to generate an OperatorPermit for this wallet`,
+                `2. Renter (${renter}) can call setOperator(${tokenId}, ${account.address}, <expiry>) on AgentNFA`,
+                `3. Go to https://shll.run/agent/0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b/${tokenId}/console/safety to set operator`,
+                `4. Use the correct RUNNER_PRIVATE_KEY for operator ${operator}`,
+            ],
+        });
+        process.exit(1);
+    }
+}
 const program = new Command();
 program.name("shll-onchain-runner").description("Execute DeFi actions securely via SHLL AgentNFA");
 
@@ -346,6 +399,7 @@ swapCmd.action(async (opts) => {
     try {
         const client = createClient(opts);
         const tokenId = BigInt(opts.tokenId);
+        await checkAccess(opts, tokenId);
         const rpcUrl = opts.rpc || DEFAULT_RPC;
 
         const fromToken = resolveToken(opts.from);
@@ -1067,6 +1121,7 @@ wrapCmd.action(async (opts) => {
             output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
             process.exit(1);
         }
+        await checkAccess(opts, BigInt(opts.tokenId));
         const client = new PolicyClient({
             operatorPrivateKey: toHex(process.env.RUNNER_PRIVATE_KEY),
             rpcUrl: opts.rpc || DEFAULT_RPC,
@@ -1117,6 +1172,7 @@ unwrapCmd.action(async (opts) => {
             output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
             process.exit(1);
         }
+        await checkAccess(opts, BigInt(opts.tokenId));
         const client = new PolicyClient({
             operatorPrivateKey: toHex(process.env.RUNNER_PRIVATE_KEY),
             rpcUrl: opts.rpc || DEFAULT_RPC,
@@ -1170,6 +1226,7 @@ transferCmd.action(async (opts) => {
             output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
             process.exit(1);
         }
+        await checkAccess(opts, BigInt(opts.tokenId));
         const client = new PolicyClient({
             operatorPrivateKey: toHex(process.env.RUNNER_PRIVATE_KEY),
             rpcUrl: opts.rpc || DEFAULT_RPC,
@@ -1909,6 +1966,7 @@ lendCmd.action(async (opts) => {
     try {
         const client = createClient(opts);
         const tokenId = BigInt(opts.tokenId);
+        await checkAccess(opts, tokenId);
         const rpcUrl = opts.rpc || DEFAULT_RPC;
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
 
@@ -1997,6 +2055,7 @@ redeemCmd.action(async (opts) => {
     try {
         const client = createClient(opts);
         const tokenId = BigInt(opts.tokenId);
+        await checkAccess(opts, tokenId);
 
         const symbol = opts.token.toUpperCase();
         const vTokenAddr = VENUS_VTOKENS[symbol];

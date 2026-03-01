@@ -36,7 +36,7 @@ const DEFAULT_NFA = "0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b";
 const DEFAULT_GUARD = "0x25d17eA0e3Bcb8CA08a2BFE917E817AFc05dbBB3";
 const DEFAULT_RPC = "https://bsc-dataseed1.binance.org";
 const DEFAULT_LISTING_MANAGER = "0x1f9CE85bD0FF75acc3D92eB79f1Eb472f0865071";
-const DEFAULT_LISTING_ID = "0x733e9d959da5c1745fa507df6b47537f0945012eff3ceb4b684cd4482f2bc4d3";
+const DEFAULT_LISTING_ID = "0xdea70e684f33fe9966753d3008c8c7ddd4422e04751b2198d03d82e97affca22";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const PANCAKE_V3_SMART_ROUTER = "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
@@ -196,18 +196,25 @@ function createClients() {
     return { account, publicClient, policyClient, config };
 }
 
-// Expiry pre-check: prevents write operations on expired agents with clear error
-const AGENT_NFA_EXPIRY_ABI = [
+// Pre-check: prevents write operations on expired/unauthorized agents with clear errors
+const AGENT_NFA_CHECK_ABI = [
     { name: "operatorExpiresOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
     { name: "userExpires", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
+    { name: "operatorOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
+    { name: "userOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
+    { name: "ownerOf", type: "function" as const, stateMutability: "view" as const, inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ name: "", type: "address" }] },
 ] as const;
 
 async function checkAgentExpiry(tokenId: bigint) {
     const config = getConfig();
+    const account = privateKeyToAccount(config.privateKey as Hex);
     const pc = createPublicClient({ chain: bsc, transport: http(config.rpc) });
-    const [operatorExpires, userExpires] = await Promise.all([
-        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_EXPIRY_ABI, functionName: "operatorExpiresOf", args: [tokenId] }) as Promise<bigint>,
-        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_EXPIRY_ABI, functionName: "userExpires", args: [tokenId] }) as Promise<bigint>,
+    const [operatorExpires, userExpires, operator, renter, owner] = await Promise.all([
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_CHECK_ABI, functionName: "operatorExpiresOf", args: [tokenId] }) as Promise<bigint>,
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_CHECK_ABI, functionName: "userExpires", args: [tokenId] }) as Promise<bigint>,
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_CHECK_ABI, functionName: "operatorOf", args: [tokenId] }) as Promise<Address>,
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_CHECK_ABI, functionName: "userOf", args: [tokenId] }) as Promise<Address>,
+        pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_CHECK_ABI, functionName: "ownerOf", args: [tokenId] }) as Promise<Address>,
     ]);
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (now > operatorExpires) {
@@ -232,6 +239,32 @@ async function checkAgentExpiry(tokenId: bigint) {
                     message: `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}). Please renew at https://shll.run/me or use a different token-id.`,
                     expiredAt: new Date(Number(userExpires) * 1000).toISOString(),
                     action: "renew",
+                })
+            }],
+        };
+    }
+    // Operator identity check: verify RUNNER_PRIVATE_KEY wallet can execute
+    const runnerAddr = account.address.toLowerCase();
+    const isOperator = operator.toLowerCase() === runnerAddr;
+    const isRenter = renter.toLowerCase() === runnerAddr;
+    const isOwner = owner.toLowerCase() === runnerAddr;
+    if (!isOperator && !isRenter && !isOwner) {
+        return {
+            expired: true, // reuse expired flag to block execution
+            content: [{
+                type: "text" as const, text: JSON.stringify({
+                    status: "error",
+                    message: `RUNNER_PRIVATE_KEY wallet (${account.address}) is NOT authorized for token-id ${tokenId}. On-chain operator is ${operator}. Your wallet must be the operator, renter, or owner to execute transactions.`,
+                    yourWallet: account.address,
+                    onChainOperator: operator,
+                    onChainRenter: renter,
+                    onChainOwner: owner,
+                    howToFix: [
+                        `Option 1: Use the 'setup_guide' tool — it generates an EIP-712 OperatorPermit that lets the renter (${renter}) authorize your current wallet (${account.address}) as operator. The renter signs the permit in their browser wallet, then the runner submits it on-chain.`,
+                        `Option 2: The renter (${renter}) can call setOperator(${tokenId}, ${account.address}, <expiry_timestamp>) on AgentNFA contract at ${config.nfa} to directly authorize this wallet.`,
+                        `Option 3: Go to https://shll.run/agent/0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b/${tokenId}/console/safety and set ${account.address} as the operator.`,
+                        `Option 4: If you have access to the correct operator wallet (${operator}), set RUNNER_PRIVATE_KEY to that wallet's private key instead.`,
+                    ],
                 })
             }],
         };
@@ -266,7 +299,7 @@ function policyRejectionHelp(reason: string | undefined, tokenId: string): Recor
 
 const server = new McpServer({
     name: "shll-defi",
-    version: "5.3.2",
+    version: "5.3.4",
 });
 
 // ── Tool: portfolio ─────────────────────────────────────
@@ -1090,7 +1123,7 @@ server.tool(
 // ── Tool: setup_guide ───────────────────────────────────
 server.tool(
     "setup_guide",
-    "Generate step-by-step dual-wallet onboarding instructions and shll.run/setup URL",
+    "Generate step-by-step dual-wallet onboarding instructions and shll.run/setup URL. IMPORTANT: Always call the 'listings' tool first to get the current listing_id — do NOT use a cached or default value, as listings can be delisted.",
     {
         listing_id: z.string().default(DEFAULT_LISTING_ID).describe("Template listing ID (bytes32 hex)"),
         days: z.number().default(1).describe("Number of days to rent"),

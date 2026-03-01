@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands — users only need to chat.
-version: 5.3.2
+version: 5.3.4
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
@@ -92,6 +92,8 @@ Show the result, then ask: *"Do you already have a SHLL Agent token-id (a number
 
 ### Step 3: Create agent — YOU do this, not the user
 
+⚠️ **CRITICAL: You MUST call `listings` first to get the current listing IDs. NEVER use a hardcoded or cached listing ID — listings can be delisted at any time.**
+
 **3a.** YOU query available agent templates:
 ```bash
 shll-run listings
@@ -102,18 +104,18 @@ Show the user a clear list:
 
 | # | Name | Type | Price/day | Min days |
 |---|------|------|-----------|----------|
-| 1 | LLM Trader Agent | llm_trader | 0.0005 BNB | 1 |
+| 1 | LLM Trader Agent | llm_trader | Free (0 BNB) | 1 |
 
 *"Which one do you want? And how many days? (default: 1 day, can extend later)"*
 
-**3b.** Once user picks, YOU execute:
+**3b.** Once user picks, YOU execute using the **listingId from the `listings` result** (NOT a hardcoded value):
 ```bash
-shll-run setup-guide --listing-id <SELECTED_ID> --days <DAYS>
+shll-run setup-guide --listing-id <LISTING_ID_FROM_STEP_3A> --days <DAYS>
 ```
 
 Take the `setupUrl` from the JSON output and tell the user:
 
-*"I've prepared everything. Now open this link to **pay the rental fee and authorize the operator wallet**:*
+*"I've prepared everything. Now open this link to **authorize the operator wallet**:*
 *👉 `<setupUrl>`*
 
 *⚠️ Connect your **personal wallet** (MetaMask / hardware wallet) — NOT the operator wallet.*
