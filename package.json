@@ -1,6 +1,6 @@
 {
     "name": "shll-skills",
-    "version": "5.4.1",
+    "version": "5.4.2",
     "description": "SHLL DeFi Agent — CLI + MCP Server for BSC",
     "main": "dist/index.js",
     "bin": {

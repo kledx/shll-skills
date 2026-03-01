@@ -219,7 +219,7 @@ async function checkAgentExpiry(tokenId: bigint) {
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (now > userExpires) {
         return {
-            expired: true,
+            blocked: true,
             content: [{
                 type: "text" as const, text: JSON.stringify({
                     status: "error",
@@ -232,7 +232,7 @@ async function checkAgentExpiry(tokenId: bigint) {
     }
     if (now > operatorExpires) {
         return {
-            expired: true,
+            blocked: true,
             content: [{
                 type: "text" as const, text: JSON.stringify({
                     status: "error",
@@ -250,7 +250,7 @@ async function checkAgentExpiry(tokenId: bigint) {
     const isOwner = owner.toLowerCase() === runnerAddr;
     if (!isOperator && !isRenter && !isOwner) {
         return {
-            expired: true, // reuse expired flag to block execution
+            blocked: true,
             content: [{
                 type: "text" as const, text: JSON.stringify({
                     status: "error",
@@ -269,7 +269,7 @@ async function checkAgentExpiry(tokenId: bigint) {
             }],
         };
     }
-    return { expired: false };
+    return { blocked: false };
 }
 
 // Policy rejection → actionable user guidance
@@ -408,7 +408,7 @@ server.tool(
     async ({ token_id, from, to, amount, dex, slippage }) => {
         const { publicClient, policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const vault = await policyClient.getVault(tokenId);
 
         const fromToken = resolveToken(from);
@@ -551,7 +551,7 @@ server.tool(
     async ({ token_id, token, amount }) => {
         const { publicClient, policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const symbol = token.toUpperCase();
         const vTokenAddr = VENUS_VTOKENS[symbol];
         if (!vTokenAddr) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Unsupported: ${symbol}. Use: ${Object.keys(VENUS_VTOKENS).join(", ")}` }) }] };
@@ -597,7 +597,7 @@ server.tool(
     async ({ token_id, token, amount }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const symbol = token.toUpperCase();
         const vTokenAddr = VENUS_VTOKENS[symbol];
         if (!vTokenAddr) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Unsupported: ${symbol}` }) }] };
@@ -662,7 +662,7 @@ server.tool(
     async ({ token_id, token, amount, to }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const tokenInfo = resolveToken(token);
         const amt = parseAmount(amount, tokenInfo.decimals);
         const recipient = to as Address;
@@ -769,7 +769,7 @@ server.tool(
     async ({ token_id, amount }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const amt = parseEther(amount);
         const data = encodeFunctionData({ abi: WBNB_ABI, functionName: "deposit" });
         const action: Action = { target: WBNB as Address, value: amt, data };
@@ -793,7 +793,7 @@ server.tool(
     async ({ token_id, amount }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const amt = parseEther(amount);
         const data = encodeFunctionData({ abi: WBNB_ABI, functionName: "withdraw", args: [amt] });
         const action: Action = { target: WBNB as Address, value: 0n, data };
@@ -1061,7 +1061,7 @@ server.tool(
 
         const { account, publicClient, policyClient, config } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const walletClient = createWalletClient({ account, chain: bsc, transport: http(config.rpc) });
         const policies = await policyClient.getPolicies(tokenId);
         const results: string[] = [];
@@ -1183,7 +1183,7 @@ server.tool(
     async ({ token_id, target, data, value }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const action: Action = {
             target: target as Address,
             value: BigInt(value),
@@ -1232,7 +1232,7 @@ server.tool(
     async ({ token_id, actions: rawActions }) => {
         const { policyClient } = createClients();
         const tokenId = BigInt(token_id);
-        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.expired) return { content: expiryCheck.content! };
+        const expiryCheck = await checkAgentExpiry(tokenId); if (expiryCheck.blocked) return { content: expiryCheck.content! };
         const actions: Action[] = rawActions.map(a => ({
             target: a.target as Address,
             value: BigInt(a.value || "0"),

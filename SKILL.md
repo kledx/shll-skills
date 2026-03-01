@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands — users only need to chat.
-version: 5.4.1
+version: 5.4.2
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun

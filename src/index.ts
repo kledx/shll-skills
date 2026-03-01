@@ -622,6 +622,7 @@ rawCmd.action(async (opts) => {
     try {
         const client = createClient(opts);
         const tokenId = BigInt(opts.tokenId);
+        await checkAccess(opts, tokenId);
 
         let actions: Action[];
 
