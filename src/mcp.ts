@@ -217,19 +217,6 @@ async function checkAgentExpiry(tokenId: bigint) {
         pc.readContract({ address: config.nfa as Address, abi: AGENT_NFA_CHECK_ABI, functionName: "ownerOf", args: [tokenId] }) as Promise<Address>,
     ]);
     const now = BigInt(Math.floor(Date.now() / 1000));
-    if (now > operatorExpires) {
-        return {
-            expired: true,
-            content: [{
-                type: "text" as const, text: JSON.stringify({
-                    status: "error",
-                    message: `Agent token-id ${tokenId} operator authorization has EXPIRED (expired at ${new Date(Number(operatorExpires) * 1000).toISOString()}). Please renew at https://shll.run/me or use a different token-id.`,
-                    expiredAt: new Date(Number(operatorExpires) * 1000).toISOString(),
-                    action: "renew",
-                })
-            }],
-        };
-    }
     if (now > userExpires) {
         return {
             expired: true,
@@ -238,6 +225,19 @@ async function checkAgentExpiry(tokenId: bigint) {
                     status: "error",
                     message: `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}). Please renew at https://shll.run/me or use a different token-id.`,
                     expiredAt: new Date(Number(userExpires) * 1000).toISOString(),
+                    action: "renew",
+                })
+            }],
+        };
+    }
+    if (now > operatorExpires) {
+        return {
+            expired: true,
+            content: [{
+                type: "text" as const, text: JSON.stringify({
+                    status: "error",
+                    message: `Agent token-id ${tokenId} operator authorization has EXPIRED (expired at ${new Date(Number(operatorExpires) * 1000).toISOString()}). Please renew at https://shll.run/me or use a different token-id.`,
+                    expiredAt: new Date(Number(operatorExpires) * 1000).toISOString(),
                     action: "renew",
                 })
             }],
