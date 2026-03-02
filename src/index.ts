@@ -5,27 +5,29 @@ import type { Action } from "shll-policy-sdk";
 import {
     createPublicClient,
     createWalletClient,
+    decodeFunctionData,
     encodeFunctionData,
     http,
     parseEther,
-    decodeEventLog,
     type Address,
     type Hex,
 } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { bsc } from "viem/chains";
 
-// ── BSC Mainnet defaults ────────────────────────────────
-const DEFAULT_NFA = "0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b";
+// === BSC Mainnet defaults ===
+const DEFAULT_NFA = "0x71cE46099E4b2a2434111C009A7E9CFd69747c8E"; // V4.1 mainnet
 const DEFAULT_GUARD = "0x25d17eA0e3Bcb8CA08a2BFE917E817AFc05dbBB3";
 const DEFAULT_RPC = "https://bsc-dataseed1.binance.org";
 const DEFAULT_LISTING_MANAGER = "0x1f9CE85bD0FF75acc3D92eB79f1Eb472f0865071";
-const DEFAULT_LISTING_ID = "0xdea70e684f33fe9966753d3008c8c7ddd4422e04751b2198d03d82e97affca22";
+const DEFAULT_LISTING_ID = "0xd2a4cca07c081b6c995654341cf53c6bd18d2316d3242bfe1de9f54c0b723f82";
+const SKILL_VERSION = "5.5.1";
+const BINDINGS_UPDATED_AT = "2026-03-02";
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const PANCAKE_V3_SMART_ROUTER = "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4";
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
 
-// ── Venus Protocol (BSC Mainnet) ────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Venus Protocol (BSC Mainnet) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const VENUS_VTOKENS: Record<string, Address> = {
     BNB: "0xA07c5b74C9B40447a954e1466938b865b6BBea36" as Address, // vBNB
     USDT: "0xfD5840Cd36d94D7229439859C0112a4185BC0255" as Address, // vUSDT
@@ -33,7 +35,7 @@ const VENUS_VTOKENS: Record<string, Address> = {
     BUSD: "0x95c78222B3D6e262426483D42CfA53685A67Ab9D" as Address, // vBUSD
 };
 
-// ── Token Symbol Registry (BSC Mainnet) ─────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Token Symbol Registry (BSC Mainnet) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑?
 const TOKEN_REGISTRY: Record<string, { address: Address; decimals: number }> = {
     BNB: { address: "0x0000000000000000000000000000000000000000" as Address, decimals: 18 },
     WBNB: { address: WBNB as Address, decimals: 18 },
@@ -46,7 +48,7 @@ const TOKEN_REGISTRY: Record<string, { address: Address; decimals: number }> = {
     DAI: { address: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3" as Address, decimals: 18 },
 };
 
-// ── ABI Fragments ───────────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?ABI Fragments 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
 const ERC20_ABI = [
     {
         type: "function" as const, name: "approve",
@@ -93,7 +95,58 @@ const SWAP_EXACT_ETH_ABI = [{
     stateMutability: "payable" as const,
 }] as const;
 
-// ── ListingManagerV2 ABI (rental) ────────────────────────
+const SWAP_EXACT_TOKENS_FOR_ETH_ABI = [{
+    type: "function" as const, name: "swapExactTokensForETH",
+    inputs: [
+        { name: "amountIn", type: "uint256" },
+        { name: "amountOutMin", type: "uint256" },
+        { name: "path", type: "address[]" },
+        { name: "to", type: "address" },
+        { name: "deadline", type: "uint256" },
+    ],
+    outputs: [{ name: "amounts", type: "uint256[]" }],
+    stateMutability: "nonpayable" as const,
+}] as const;
+
+const SWAP_EXACT_ETH_FOR_TOKENS_FEE_ABI = [{
+    type: "function" as const, name: "swapExactETHForTokensSupportingFeeOnTransferTokens",
+    inputs: [
+        { name: "amountOutMin", type: "uint256" },
+        { name: "path", type: "address[]" },
+        { name: "to", type: "address" },
+        { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "payable" as const,
+}] as const;
+
+const SWAP_EXACT_TOKENS_FOR_TOKENS_FEE_ABI = [{
+    type: "function" as const, name: "swapExactTokensForTokensSupportingFeeOnTransferTokens",
+    inputs: [
+        { name: "amountIn", type: "uint256" },
+        { name: "amountOutMin", type: "uint256" },
+        { name: "path", type: "address[]" },
+        { name: "to", type: "address" },
+        { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable" as const,
+}] as const;
+
+const SWAP_EXACT_TOKENS_FOR_ETH_FEE_ABI = [{
+    type: "function" as const, name: "swapExactTokensForETHSupportingFeeOnTransferTokens",
+    inputs: [
+        { name: "amountIn", type: "uint256" },
+        { name: "amountOutMin", type: "uint256" },
+        { name: "path", type: "address[]" },
+        { name: "to", type: "address" },
+        { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable" as const,
+}] as const;
+
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?ListingManagerV2 ABI (rental) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const LISTING_MANAGER_ABI = [
     {
         type: "function" as const, name: "rentToMintWithParams",
@@ -133,7 +186,7 @@ const LISTING_MANAGER_ABI = [
     },
 ] as const;
 
-// ── AgentNFA ABI (operator + fund) ──────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?AgentNFA ABI (operator + fund) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const AGENT_NFA_ABI = [
     {
         type: "function" as const, name: "setOperator",
@@ -169,7 +222,7 @@ const GET_AMOUNTS_OUT_ABI = [{
     stateMutability: "view" as const,
 }] as const;
 
-// ── PancakeSwap V3 SmartRouter ABI ──────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?PancakeSwap V3 SmartRouter ABI 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const V3_EXACT_INPUT_SINGLE_ABI = [{
     type: "function" as const, name: "exactInputSingle",
     inputs: [{
@@ -182,6 +235,22 @@ const V3_EXACT_INPUT_SINGLE_ABI = [{
             { name: "amountIn", type: "uint256" },
             { name: "amountOutMinimum", type: "uint256" },
             { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+    }],
+    outputs: [{ name: "amountOut", type: "uint256" }],
+    stateMutability: "payable" as const,
+}] as const;
+
+const V3_EXACT_INPUT_ABI = [{
+    type: "function" as const, name: "exactInput",
+    inputs: [{
+        name: "params", type: "tuple",
+        components: [
+            { name: "path", type: "bytes" },
+            { name: "recipient", type: "address" },
+            { name: "amountIn", type: "uint256" },
+            { name: "amountOutMinimum", type: "uint256" },
+            { name: "deadline", type: "uint256" },
         ],
     }],
     outputs: [{ name: "amountOut", type: "uint256" }],
@@ -211,17 +280,17 @@ const V3_QUOTE_ABI = [{
 
 const V3_QUOTER = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997" as Address;
 
-// ── Venus Protocol ABI ──────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Venus Protocol ABI 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 // Write operations (for encodeFunctionData)
 const VTOKEN_ABI = [
-    // mint(uint256) — supply ERC20 tokens to Venus
+    // mint(uint256) 闂?supply ERC20 tokens to Venus
     {
         type: "function" as const, name: "mint",
         inputs: [{ name: "mintAmount", type: "uint256" }],
         outputs: [{ name: "", type: "uint256" }],
         stateMutability: "nonpayable" as const,
     },
-    // redeemUnderlying(uint256) — redeem by underlying amount
+    // redeemUnderlying(uint256) 闂?redeem by underlying amount
     {
         type: "function" as const, name: "redeemUnderlying",
         inputs: [{ name: "redeemAmount", type: "uint256" }],
@@ -230,7 +299,7 @@ const VTOKEN_ABI = [
     },
 ] as const;
 
-// Read operations (for readContract — must be view/pure)
+// Read operations (for readContract 闂?must be view/pure)
 const VTOKEN_READ_ABI = [
     {
         type: "function" as const, name: "balanceOfUnderlying",
@@ -260,7 +329,7 @@ const VBNB_MINT_ABI = [{
     stateMutability: "payable" as const,
 }] as const;
 
-// ── Helpers ─────────────────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Helpers 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑?
 function toHex(s: string): Hex {
     return (s.startsWith("0x") ? s : `0x${s}`) as Hex;
 }
@@ -269,13 +338,27 @@ function output(data: Record<string, unknown>) {
     console.log(JSON.stringify(data));
 }
 
+function outputError(message: string, nextStep?: string, extra: Record<string, unknown> = {}) {
+    output({
+        status: "error",
+        message,
+        ...(nextStep ? { next_step: nextStep } : {}),
+        ...extra,
+    });
+}
+
+function agentConsoleUrl(tokenId: string | bigint): string {
+    return `https://shll.run/agent/${DEFAULT_NFA}/${tokenId.toString()}/console/safety`;
+}
+
 function createPolicyClient(opts: Record<string, string>): PolicyClient {
     const pk = process.env.RUNNER_PRIVATE_KEY;
     return new PolicyClient({
         operatorPrivateKey: pk ? toHex(pk) : undefined,
         rpcUrl: opts.rpc || DEFAULT_RPC,
-        policyGuardAddress: toHex(opts.guardAddress || DEFAULT_GUARD) as Address,
-        agentNfaAddress: toHex(opts.nfaAddress || DEFAULT_NFA) as Address,
+        // Security hardening: never allow runtime override for core contracts.
+        policyGuardAddress: toHex(DEFAULT_GUARD) as Address,
+        agentNfaAddress: toHex(DEFAULT_NFA) as Address,
     });
 }
 
@@ -302,30 +385,32 @@ function parseAmount(amountStr: string, decimals: number): bigint {
     return BigInt(amountStr) * (10n ** BigInt(decimals));
 }
 
-// ── Shared Options ──────────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Shared Options 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 function addSharedOptions(cmd: Command): Command {
     return cmd
         .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
-        .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-        .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-        .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+        .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 }
 
 function createClient(options: Record<string, string>): PolicyClient {
     const privateKey = toHex(process.env.RUNNER_PRIVATE_KEY || "");
     if (!process.env.RUNNER_PRIVATE_KEY) {
-        output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
+        outputError(
+            "RUNNER_PRIVATE_KEY environment variable is missing",
+            "Run 'shll-run generate-wallet', fund it with a small BNB amount, export RUNNER_PRIVATE_KEY, then retry.",
+        );
         process.exit(1);
     }
     return new PolicyClient({
         rpcUrl: options.rpc || DEFAULT_RPC,
-        agentNfaAddress: toHex(options.nfaAddress || DEFAULT_NFA) as Address,
-        policyGuardAddress: toHex(options.guardAddress || DEFAULT_GUARD) as Address,
+        // Security hardening: lock to audited mainnet addresses.
+        agentNfaAddress: toHex(DEFAULT_NFA) as Address,
+        policyGuardAddress: toHex(DEFAULT_GUARD) as Address,
         operatorPrivateKey: privateKey,
         chainId: 56,
     });
 }
-// ── Program ─────────────────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Program 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑?
 
 // Pre-check: prevents write operations on expired/unauthorized agents with clear error
 const AGENT_NFA_ACCESS_ABI = [
@@ -338,7 +423,7 @@ const AGENT_NFA_ACCESS_ABI = [
 
 async function checkAccess(opts: Record<string, string>, tokenId: bigint) {
     const rpcUrl = opts.rpc || DEFAULT_RPC;
-    const nfa = (opts.nfaAddress || DEFAULT_NFA) as Address;
+    const nfa = DEFAULT_NFA as Address;
     const pk = toHex(process.env.RUNNER_PRIVATE_KEY || "");
     const account = privateKeyToAccount(pk);
     const pc = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
@@ -351,11 +436,17 @@ async function checkAccess(opts: Record<string, string>, tokenId: bigint) {
     ]);
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (now > userExpires) {
-        output({ status: "error", message: `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}). Please renew at https://shll.run/me` });
+        outputError(
+            `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}).`,
+            "Renew the subscription at https://shll.run/me, then retry.",
+        );
         process.exit(1);
     }
     if (now > operatorExpires) {
-        output({ status: "error", message: `Agent token-id ${tokenId} operator authorization has EXPIRED (expired at ${new Date(Number(operatorExpires) * 1000).toISOString()}). Please re-authorize via setup_guide.` });
+        outputError(
+            `Agent token-id ${tokenId} operator authorization has EXPIRED (expired at ${new Date(Number(operatorExpires) * 1000).toISOString()}).`,
+            "Run 'shll-run setup-guide --days 7' and complete operator authorization in browser, then retry.",
+        );
         process.exit(1);
     }
     const runnerAddr = account.address.toLowerCase();
@@ -366,6 +457,7 @@ async function checkAccess(opts: Record<string, string>, tokenId: bigint) {
         output({
             status: "error",
             message: `RUNNER_PRIVATE_KEY wallet (${account.address}) is NOT authorized for token-id ${tokenId}. On-chain operator is ${operator}.`,
+            next_step: `Authorize ${account.address} as operator via ${agentConsoleUrl(tokenId)} or use the correct RUNNER_PRIVATE_KEY.`,
             yourWallet: account.address,
             onChainOperator: operator,
             onChainRenter: renter,
@@ -373,17 +465,139 @@ async function checkAccess(opts: Record<string, string>, tokenId: bigint) {
             howToFix: [
                 `1. Use 'setup_guide' command to generate an OperatorPermit for this wallet`,
                 `2. Renter (${renter}) can call setOperator(${tokenId}, ${account.address}, <expiry>) on AgentNFA`,
-                `3. Go to https://shll.run/agent/0xE98DCdbf370D7b52c9A2b88F79bEF514A5375a2b/${tokenId}/console/safety to set operator`,
+                `3. Go to ${agentConsoleUrl(tokenId)} to set operator`,
                 `4. Use the correct RUNNER_PRIVATE_KEY for operator ${operator}`,
             ],
         });
         process.exit(1);
     }
 }
+
+type RecipientCheckResult =
+    | { ok: true; checkedRecipient?: Address; mode: "direct" | "decoded" | "no-recipient" }
+    | { ok: false; reason: string };
+
+function tryDecodeCalldata(abi: readonly unknown[], data: Hex) {
+    try {
+        return decodeFunctionData({ abi: abi as never, data });
+    } catch {
+        return null;
+    }
+}
+
+function checkActionRecipientSafety(action: Action, vault: Address): RecipientCheckResult {
+    const vaultLower = vault.toLowerCase();
+    const targetLower = action.target.toLowerCase();
+    const data = action.data as Hex;
+
+    if (data === "0x") {
+        if (targetLower !== vaultLower) {
+            return {
+                ok: false,
+                reason: `Native transfer target ${action.target} does not match vault ${vault}.`,
+            };
+        }
+        return { ok: true, checkedRecipient: action.target, mode: "direct" };
+    }
+
+    const swapEth = tryDecodeCalldata(SWAP_EXACT_ETH_ABI, data);
+    if (swapEth?.functionName === "swapExactETHForTokens") {
+        const recipient = swapEth.args?.[2] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded swapExactETHForTokens calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `swapExactETHForTokens recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const swapTokens = tryDecodeCalldata(SWAP_EXACT_TOKENS_ABI, data);
+    if (swapTokens?.functionName === "swapExactTokensForTokens") {
+        const recipient = swapTokens.args?.[3] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded swapExactTokensForTokens calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `swapExactTokensForTokens recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const swapTokensForEth = tryDecodeCalldata(SWAP_EXACT_TOKENS_FOR_ETH_ABI, data);
+    if (swapTokensForEth?.functionName === "swapExactTokensForETH") {
+        const recipient = swapTokensForEth.args?.[3] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded swapExactTokensForETH calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `swapExactTokensForETH recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const swapEthFee = tryDecodeCalldata(SWAP_EXACT_ETH_FOR_TOKENS_FEE_ABI, data);
+    if (swapEthFee?.functionName === "swapExactETHForTokensSupportingFeeOnTransferTokens") {
+        const recipient = swapEthFee.args?.[2] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded swapExactETHForTokensSupportingFeeOnTransferTokens calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `swapExactETHForTokensSupportingFeeOnTransferTokens recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const swapTokensFee = tryDecodeCalldata(SWAP_EXACT_TOKENS_FOR_TOKENS_FEE_ABI, data);
+    if (swapTokensFee?.functionName === "swapExactTokensForTokensSupportingFeeOnTransferTokens") {
+        const recipient = swapTokensFee.args?.[3] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded swapExactTokensForTokensSupportingFeeOnTransferTokens calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `swapExactTokensForTokensSupportingFeeOnTransferTokens recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const swapTokensForEthFee = tryDecodeCalldata(SWAP_EXACT_TOKENS_FOR_ETH_FEE_ABI, data);
+    if (swapTokensForEthFee?.functionName === "swapExactTokensForETHSupportingFeeOnTransferTokens") {
+        const recipient = swapTokensForEthFee.args?.[3] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded swapExactTokensForETHSupportingFeeOnTransferTokens calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `swapExactTokensForETHSupportingFeeOnTransferTokens recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const v3Single = tryDecodeCalldata(V3_EXACT_INPUT_SINGLE_ABI, data);
+    if (v3Single?.functionName === "exactInputSingle") {
+        const params = v3Single.args?.[0] as { recipient?: Address } | undefined;
+        if (!params?.recipient) return { ok: false, reason: "Decoded exactInputSingle calldata but recipient was missing." };
+        const recipient = params.recipient;
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `exactInputSingle recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const v3ExactInput = tryDecodeCalldata(V3_EXACT_INPUT_ABI, data);
+    if (v3ExactInput?.functionName === "exactInput") {
+        const params = v3ExactInput.args?.[0] as { recipient?: Address } | undefined;
+        if (!params?.recipient) return { ok: false, reason: "Decoded exactInput calldata but recipient was missing." };
+        const recipient = params.recipient;
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `exactInput recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    const transfer = tryDecodeCalldata(ERC20_TRANSFER_ABI, data);
+    if (transfer?.functionName === "transfer") {
+        const recipient = transfer.args?.[0] as Address | undefined;
+        if (!recipient) return { ok: false, reason: "Decoded ERC20 transfer calldata but recipient was missing." };
+        return recipient.toLowerCase() === vaultLower
+            ? { ok: true, checkedRecipient: recipient, mode: "decoded" }
+            : { ok: false, reason: `ERC20 transfer recipient ${recipient} does not match vault ${vault}.` };
+    }
+
+    if (tryDecodeCalldata(ERC20_ABI, data)?.functionName === "approve") return { ok: true, mode: "no-recipient" };
+    if (tryDecodeCalldata(WBNB_ABI, data)) return { ok: true, mode: "no-recipient" };
+    if (tryDecodeCalldata(VTOKEN_ABI, data)) return { ok: true, mode: "no-recipient" };
+    if (tryDecodeCalldata(VBNB_MINT_ABI, data)) return { ok: true, mode: "no-recipient" };
+
+    return {
+        ok: false,
+        reason: "Unable to decode recipient from calldata. Blocked by default to prevent recipient redirection risk.",
+    };
+}
+
 const program = new Command();
 program.name("shll-onchain-runner").description("Execute DeFi actions securely via SHLL AgentNFA");
 
-// ── Subcommand: swap ────────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: swap 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const swapCmd = new Command("swap")
     .description("Swap tokens on PancakeSwap (auto-routes V2/V3)")
     .requiredOption("-f, --from <token>", "Input token (symbol or 0x address, e.g. USDC, BNB)")
@@ -415,12 +629,12 @@ swapCmd.action(async (opts) => {
         const vault = await client.getVault(tokenId);
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
 
-        // Token addresses for routing (convert BNB → WBNB for path)
+        // Token addresses for routing (convert BNB 闂?WBNB for path)
         const tokenInAddr = isNativeIn ? (WBNB as Address) : fromToken.address;
         const tokenOutAddr = toToken.address === "0x0000000000000000000000000000000000000000"
             ? (WBNB as Address) : toToken.address;
 
-        // ── Try V3 quote ──
+        // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Try V3 quote 闂佸啿鍘滈崑鎾绘煃閸忓浜?
         let v3Quote = 0n;
         let v3Available = false;
         if (dexMode === "auto" || dexMode === "v3") {
@@ -444,7 +658,7 @@ swapCmd.action(async (opts) => {
             }
         }
 
-        // ── Try V2 quote ──
+        // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Try V2 quote 闂佸啿鍘滈崑鎾绘煃閸忓浜?
         let v2Quote = 0n;
         let v2Available = false;
         const v2Router = (opts.router || PANCAKE_V2_ROUTER) as Address;
@@ -469,7 +683,7 @@ swapCmd.action(async (opts) => {
             }
         }
 
-        // ── Pick best route ──
+        // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Pick best route 闂佸啿鍘滈崑鎾绘煃閸忓浜?
         let useV3 = false;
         if (dexMode === "v3") {
             if (!v3Available) {
@@ -497,12 +711,12 @@ swapCmd.action(async (opts) => {
 
         output({
             status: "info",
-            message: `Route: ${useV3 ? "V3" : "V2"} | Quote: ${amountIn.toString()} ${opts.from} → ~${selectedQuote.toString()} ${opts.to}` +
+            message: `Route: ${useV3 ? "V3" : "V2"} | Quote: ${amountIn.toString()} ${opts.from} 闂?~${selectedQuote.toString()} ${opts.to}` +
                 (v3Available && v2Available ? ` (V3: ${v3Quote.toString()}, V2: ${v2Quote.toString()})` : "") +
                 ` | minOut: ${minOut.toString()} (${slippage}% slippage)`,
         });
 
-        // ── Build actions ──
+        // 闂佸啿鍘滈崑鎾绘煃閸忓浜?Build actions 闂佸啿鍘滈崑鎾绘煃閸忓浜?
         const actions: Action[] = [];
 
         // Auto-approve if ERC20 input
@@ -603,23 +817,31 @@ swapCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: raw (original low-level mode) ───────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: raw (original low-level mode) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
 const rawCmd = new Command("raw")
-    .description("Execute a raw transaction (advanced: you provide the calldata)")
+    .description("Execute raw calldata (advanced, high risk; prefer built-in commands)")
     .requiredOption("-t, --target <address>", "Target contract address")
     .requiredOption("-d, --data <hex>", "Calldata hex")
     .option("-v, --value <number>", "Native BNB value in wei", "0")
     .option("-b, --batch", "Batch mode: read actions from --actions JSON array")
-    .option("-a, --actions <json>", "JSON array of actions for batch mode");
+    .option("-a, --actions <json>", "JSON array of actions for batch mode")
+    .option("--i-understand-the-risk", "Acknowledge that raw calldata can bypass intent-level safeguards");
 addSharedOptions(rawCmd);
 
 rawCmd.action(async (opts) => {
     try {
+        if (!opts.iUnderstandTheRisk) {
+            outputError(
+                "Raw mode is dangerous and can execute arbitrary calldata.",
+                "Re-run with --i-understand-the-risk only if you fully trust the calldata source.",
+            );
+            process.exit(1);
+        }
         const client = createClient(opts);
         const tokenId = BigInt(opts.tokenId);
         await checkAccess(opts, tokenId);
@@ -628,7 +850,7 @@ rawCmd.action(async (opts) => {
 
         if (opts.batch) {
             if (!opts.actions) {
-                output({ status: "error", message: "--actions JSON is required in batch mode" });
+                outputError("--actions JSON is required in batch mode", "Provide --actions '[{\"target\":\"0x...\",\"value\":\"0\",\"data\":\"0x...\"}]'.");
                 process.exit(1);
             }
             const parsed = JSON.parse(opts.actions) as Array<{ target: string; value: string; data: string }>;
@@ -643,6 +865,21 @@ rawCmd.action(async (opts) => {
                 value: BigInt(opts.value),
                 data: toHex(opts.data),
             }];
+        }
+
+        const vault = await client.getVault(tokenId);
+        for (let i = 0; i < actions.length; i++) {
+            const recipientCheck = checkActionRecipientSafety(actions[i], vault);
+            if (!recipientCheck.ok) {
+                output({
+                    status: "error",
+                    failedActionIndex: i,
+                    reason: recipientCheck.reason,
+                    vault,
+                    message: "Blocked before on-chain execution to prevent recipient redirection risk.",
+                });
+                process.exit(1);
+            }
         }
 
         for (const action of actions) {
@@ -666,12 +903,12 @@ rawCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: tokens ──────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: tokens 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const tokensCmd = new Command("tokens")
     .description("List all known token symbols and their BSC addresses");
 tokensCmd.action(() => {
@@ -683,168 +920,17 @@ tokensCmd.action(() => {
     output({ status: "success", tokens });
 });
 
-// ── Subcommand: init (DEPRECATED — uses same key for owner+operator) ──
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: init (DEPRECATED 闂?uses same key for owner+operator) 闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const initCmd = new Command("init")
-    .description("[DEPRECATED] One-click setup — uses same key as owner AND operator. Use setup-guide instead.")
-    .requiredOption("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)")
-    .requiredOption("-d, --days <number>", "Number of days to rent")
-    .option("-f, --fund <bnb>", "BNB to deposit into vault (human-readable, e.g. 0.1)", "0")
-    .option("--i-understand-the-risk", "Acknowledge the security risk of using same key for owner and operator")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--listing-manager <address>", "ListingManagerV2 address", DEFAULT_LISTING_MANAGER)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA);
+    .description("[DISABLED] Unsafe legacy one-key setup has been removed. Use setup-guide instead.");
 
-initCmd.action(async (opts) => {
-    try {
-        // Deprecation guard
-        if (!opts.iUnderstandTheRisk) {
-            output({
-                status: "error",
-                message: "⚠️  DEPRECATED: 'init' uses the same private key as both owner AND operator. " +
-                    "If this key is leaked (e.g. via AI prompt injection), an attacker can withdraw ALL vault funds. " +
-                    "Use 'setup-guide' instead for a secure dual-wallet setup. " +
-                    "If you understand the risk and still want to proceed, add --i-understand-the-risk.",
-            });
-            process.exit(1);
-        }
-
-        // Validate private key
-        if (!process.env.RUNNER_PRIVATE_KEY) {
-            output({ status: "error", message: "RUNNER_PRIVATE_KEY environment variable is missing" });
-            process.exit(1);
-        }
-        const privateKey = toHex(process.env.RUNNER_PRIVATE_KEY);
-        const account = privateKeyToAccount(privateKey);
-        const rpcUrl = opts.rpc || DEFAULT_RPC;
-
-        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
-        const walletClient = createWalletClient({
-            account,
-            chain: bsc,
-            transport: http(rpcUrl),
-        });
-
-        const listingManagerAddr = toHex(opts.listingManager || DEFAULT_LISTING_MANAGER) as Address;
-        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
-        const listingId = opts.listingId as Hex;
-        const daysToRent = Number(opts.days);
-
-        // Step 0: Query listing to get pricePerDay
-        output({ status: "info", message: `Querying listing ${listingId.slice(0, 10)}...` });
-        const listing = await publicClient.readContract({
-            address: listingManagerAddr,
-            abi: LISTING_MANAGER_ABI,
-            functionName: "listings",
-            args: [listingId],
-        });
-
-        const [, , , pricePerDay, minDays, active] = listing;
-        if (!active) {
-            output({ status: "error", message: "Listing is not active" });
-            process.exit(1);
-        }
-        if (daysToRent < minDays) {
-            output({ status: "error", message: `Minimum rental is ${minDays} days, you requested ${daysToRent}` });
-            process.exit(1);
-        }
-
-        const totalRent = BigInt(pricePerDay) * BigInt(daysToRent);
-        output({ status: "info", message: `Rent cost: ${totalRent.toString()} wei for ${daysToRent} days` });
-
-        // Step 1: Rent (mint instance)
-        output({ status: "info", message: "Step 1/3: Renting agent (rentToMintWithParams)..." });
-        const rentHash = await walletClient.writeContract({
-            address: listingManagerAddr,
-            abi: LISTING_MANAGER_ABI,
-            functionName: "rentToMintWithParams",
-            args: [listingId, daysToRent, 1, 1, "0x01"],
-            value: totalRent,
-        });
-
-        output({ status: "info", message: `Rent tx submitted: ${rentHash}` });
-        const rentReceipt = await publicClient.waitForTransactionReceipt({ hash: rentHash });
-
-        // Extract minted tokenId from InstanceRented event
-        let tokenId: bigint | null = null;
-        let vaultAddress: Address | null = null;
-        for (const log of rentReceipt.logs) {
-            if (log.address.toLowerCase() !== listingManagerAddr.toLowerCase()) continue;
-            try {
-                const decoded = decodeEventLog({
-                    abi: LISTING_MANAGER_ABI,
-                    data: log.data,
-                    topics: log.topics,
-                    strict: false,
-                });
-                if (decoded.eventName === "InstanceRented" && decoded.args) {
-                    const args = decoded.args as {
-                        instanceTokenId?: bigint;
-                        instanceAccount?: Address;
-                    };
-                    if (args.instanceTokenId !== undefined) {
-                        tokenId = args.instanceTokenId;
-                        vaultAddress = args.instanceAccount || null;
-                        break;
-                    }
-                }
-            } catch { /* skip non-matching logs */ }
-        }
-
-        if (tokenId === null) {
-            output({ status: "error", message: "Failed to extract tokenId from rent transaction" });
-            process.exit(1);
-        }
-
-        output({ status: "info", message: `Agent minted! Token ID: ${tokenId.toString()}, Vault: ${vaultAddress}` });
-
-        // Step 2: setOperator (authorize self)
-        output({ status: "info", message: "Step 2/3: Authorizing self as operator (setOperator)..." });
-        const rentExpires = BigInt(Math.floor(Date.now() / 1000) + daysToRent * 86400);
-        const opHash = await walletClient.writeContract({
-            address: nfaAddr,
-            abi: AGENT_NFA_ABI,
-            functionName: "setOperator",
-            args: [tokenId, account.address, rentExpires],
-        });
-        await publicClient.waitForTransactionReceipt({ hash: opHash });
-        output({ status: "info", message: `Operator set: ${account.address}` });
-
-        // Step 3: Fund vault (optional)
-        const fundBnb = opts.fund || "0";
-        if (fundBnb !== "0") {
-            output({ status: "info", message: `Step 3/3: Funding vault with ${fundBnb} BNB...` });
-            const fundValue = parseEther(fundBnb);
-            const fundHash = await walletClient.writeContract({
-                address: nfaAddr,
-                abi: AGENT_NFA_ABI,
-                functionName: "fundAgent",
-                args: [tokenId],
-                value: fundValue,
-            });
-            await publicClient.waitForTransactionReceipt({ hash: fundHash });
-            output({ status: "info", message: `Vault funded with ${fundBnb} BNB` });
-        } else {
-            output({ status: "info", message: "Step 3/3: Skipped (no --fund specified)" });
-        }
-
-        // Done!
-        output({
-            status: "success",
-            tokenId: tokenId.toString(),
-            vault: vaultAddress,
-            operator: account.address,
-            rentTx: rentHash,
-            message: `Agent #${tokenId} is ready! Use: shll-onchain-runner swap --from BNB --to USDC --amount 0.1 --token-id ${tokenId}`,
-        });
-
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
-        process.exit(1);
-    }
+initCmd.action(() => {
+    outputError(
+        "The 'init' command is disabled for security.",
+        "Use 'shll-run setup-guide --days 7' to complete the safe dual-wallet setup.",
+    );
+    process.exit(1);
 });
-
-// ── DexScreener API helpers ─────────────────────────────
 const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex";
 
 interface DexScreenerPair {
@@ -888,7 +974,7 @@ async function searchToken(query: string): Promise<DexScreenerPair[]> {
     }
 }
 
-// ── ERC20 balanceOf ABI ─────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?ERC20 balanceOf ABI 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑?
 const ERC20_BALANCE_ABI = [{
     type: "function" as const, name: "balanceOf",
     inputs: [{ name: "account", type: "address" }],
@@ -896,17 +982,16 @@ const ERC20_BALANCE_ABI = [{
     stateMutability: "view" as const,
 }] as const;
 
-// ── Subcommand: portfolio ───────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: portfolio 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
 const portfolioCmd = new Command("portfolio")
     .description("Query vault BNB balance, ERC20 holdings, and USD values")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 portfolioCmd.action(async (opts) => {
     try {
         const rpcUrl = opts.rpc || DEFAULT_RPC;
-        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
+        const nfaAddr = toHex(DEFAULT_NFA) as Address;
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
         const tokenId = BigInt(opts.tokenId);
 
@@ -988,12 +1073,12 @@ portfolioCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: price ───────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: price 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
 const priceCmd = new Command("price")
     .description("Get real-time token price, volume, and liquidity from DexScreener")
     .requiredOption("-t, --token <symbolOrAddress>", "Token symbol (e.g. CAKE) or 0x address");
@@ -1044,12 +1129,12 @@ priceCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: search ──────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: search 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const searchCmd = new Command("search")
     .description("Search for a token by name or symbol on BSC via DexScreener")
     .requiredOption("-q, --query <text>", "Token name or symbol to search");
@@ -1075,12 +1160,12 @@ searchCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── WBNB ABI fragments (wrap/unwrap) ────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?WBNB ABI fragments (wrap/unwrap) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const WBNB_ABI = [
     {
         type: "function" as const, name: "deposit",
@@ -1096,7 +1181,7 @@ const WBNB_ABI = [
     },
 ] as const;
 
-// ── ERC20 transfer ABI ──────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?ERC20 transfer ABI 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const ERC20_TRANSFER_ABI = [{
     type: "function" as const, name: "transfer",
     inputs: [
@@ -1107,14 +1192,12 @@ const ERC20_TRANSFER_ABI = [{
     stateMutability: "nonpayable" as const,
 }] as const;
 
-// ── Subcommand: wrap ────────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: wrap 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const wrapCmd = new Command("wrap")
-    .description("Wrap BNB → WBNB (from vault balance)")
+    .description("Wrap BNB 闂?WBNB (from vault balance)")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
     .requiredOption("-a, --amount <bnb>", "BNB amount to wrap (human-readable)")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 wrapCmd.action(async (opts) => {
     try {
@@ -1126,20 +1209,20 @@ wrapCmd.action(async (opts) => {
         const client = new PolicyClient({
             operatorPrivateKey: toHex(process.env.RUNNER_PRIVATE_KEY),
             rpcUrl: opts.rpc || DEFAULT_RPC,
-            policyGuardAddress: toHex(opts.guardAddress || DEFAULT_GUARD) as Address,
-            agentNfaAddress: toHex(opts.nfaAddress || DEFAULT_NFA) as Address,
+            policyGuardAddress: toHex(DEFAULT_GUARD) as Address,
+            agentNfaAddress: toHex(DEFAULT_NFA) as Address,
         });
         const tokenId = BigInt(opts.tokenId);
         const amount = parseEther(opts.amount);
         const wbnbAddr = toHex(process.env.WBNB_ADDRESS || WBNB) as Address;
 
-        // WBNB.deposit() — sends BNB from vault to WBNB contract, receives WBNB back
+        // WBNB.deposit() 闂?sends BNB from vault to WBNB contract, receives WBNB back
         const calldata = encodeFunctionData({
             abi: WBNB_ABI,
             functionName: "deposit",
         });
 
-        output({ status: "info", message: `Wrapping ${opts.amount} BNB → WBNB...` });
+        output({ status: "info", message: `Wrapping ${opts.amount} BNB 闂?WBNB...` });
         const action: Action = { target: wbnbAddr, value: amount, data: calldata };
 
         const validation = await client.validate(tokenId, action);
@@ -1149,23 +1232,21 @@ wrapCmd.action(async (opts) => {
         }
 
         const result = await client.execute(tokenId, action, true);
-        output({ status: "success", tx: result.hash, message: `Wrapped ${opts.amount} BNB → WBNB` });
+        output({ status: "success", tx: result.hash, message: `Wrapped ${opts.amount} BNB 闂?WBNB` });
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: unwrap ──────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: unwrap 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const unwrapCmd = new Command("unwrap")
-    .description("Unwrap WBNB → BNB (to vault)")
+    .description("Unwrap WBNB 闂?BNB (to vault)")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
     .requiredOption("-a, --amount <bnb>", "WBNB amount to unwrap (human-readable)")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 unwrapCmd.action(async (opts) => {
     try {
@@ -1177,21 +1258,21 @@ unwrapCmd.action(async (opts) => {
         const client = new PolicyClient({
             operatorPrivateKey: toHex(process.env.RUNNER_PRIVATE_KEY),
             rpcUrl: opts.rpc || DEFAULT_RPC,
-            policyGuardAddress: toHex(opts.guardAddress || DEFAULT_GUARD) as Address,
-            agentNfaAddress: toHex(opts.nfaAddress || DEFAULT_NFA) as Address,
+            policyGuardAddress: toHex(DEFAULT_GUARD) as Address,
+            agentNfaAddress: toHex(DEFAULT_NFA) as Address,
         });
         const tokenId = BigInt(opts.tokenId);
         const amount = parseEther(opts.amount);
         const wbnbAddr = toHex(process.env.WBNB_ADDRESS || WBNB) as Address;
 
-        // WBNB.withdraw(uint256) — burns WBNB, vault receives BNB
+        // WBNB.withdraw(uint256) 闂?burns WBNB, vault receives BNB
         const calldata = encodeFunctionData({
             abi: WBNB_ABI,
             functionName: "withdraw",
             args: [amount],
         });
 
-        output({ status: "info", message: `Unwrapping ${opts.amount} WBNB → BNB...` });
+        output({ status: "info", message: `Unwrapping ${opts.amount} WBNB 闂?BNB...` });
         const action: Action = { target: wbnbAddr, value: 0n, data: calldata };
 
         const validation = await client.validate(tokenId, action);
@@ -1201,25 +1282,23 @@ unwrapCmd.action(async (opts) => {
         }
 
         const result = await client.execute(tokenId, action, true);
-        output({ status: "success", tx: result.hash, message: `Unwrapped ${opts.amount} WBNB → BNB` });
+        output({ status: "success", tx: result.hash, message: `Unwrapped ${opts.amount} WBNB 闂?BNB` });
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: transfer ────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: transfer 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const transferCmd = new Command("transfer")
     .description("Transfer ERC20 tokens or BNB from vault to a recipient")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
     .requiredOption("-t, --token <symbol>", "Token symbol (e.g. USDC) or 0x address, use BNB for native")
     .requiredOption("-a, --amount <value>", "Amount to transfer (human-readable)")
     .requiredOption("--to <address>", "Recipient address")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 transferCmd.action(async (opts) => {
     try {
@@ -1231,8 +1310,8 @@ transferCmd.action(async (opts) => {
         const client = new PolicyClient({
             operatorPrivateKey: toHex(process.env.RUNNER_PRIVATE_KEY),
             rpcUrl: opts.rpc || DEFAULT_RPC,
-            policyGuardAddress: toHex(opts.guardAddress || DEFAULT_GUARD) as Address,
-            agentNfaAddress: toHex(opts.nfaAddress || DEFAULT_NFA) as Address,
+            policyGuardAddress: toHex(DEFAULT_GUARD) as Address,
+            agentNfaAddress: toHex(DEFAULT_NFA) as Address,
         });
         const tokenId = BigInt(opts.tokenId);
         const recipient = toHex(opts.to) as Address;
@@ -1243,7 +1322,7 @@ transferCmd.action(async (opts) => {
         const isBNB = tokenInfo.address === "0x0000000000000000000000000000000000000000";
 
         if (isBNB) {
-            // Native BNB transfer — empty calldata, value = amount
+            // Native BNB transfer 闂?empty calldata, value = amount
             action = { target: recipient, value: amount, data: "0x" as Hex };
         } else {
             // ERC20 transfer(address, uint256)
@@ -1268,12 +1347,12 @@ transferCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Policy Configuration ABI fragments ──────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Policy Configuration ABI fragments 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const SPENDING_LIMIT_ABI = [
     {
         type: "function" as const, name: "setLimits",
@@ -1316,13 +1395,11 @@ const COOLDOWN_ABI = [
     },
 ] as const;
 
-// ── Subcommand: policies ────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: policies 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const policiesCmd = new Command("policies")
     .description("View all active policies and current settings for an Agent")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 policiesCmd.action(async (opts) => {
     try {
@@ -1403,27 +1480,25 @@ policiesCmd.action(async (opts) => {
             status: "success",
             tokenId: tokenId.toString(),
             humanSummary,
-            securityNote: "Operator wallet CANNOT withdraw vault funds or transfer Agent NFT — only owner can.",
+            securityNote: "Operator wallet CANNOT withdraw vault funds or transfer Agent NFT 闂?only owner can.",
             policies: enriched,
         });
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: config ──────────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: config 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜?
 const configCmd = new Command("config")
     .description("Configure risk parameters (spending limits, cooldown)")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
     .option("--tx-limit <bnb>", "Max BNB per transaction (human-readable)")
     .option("--daily-limit <bnb>", "Max BNB per day (human-readable)")
     .option("--cooldown <seconds>", "Minimum seconds between transactions")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 configCmd.action(async (opts) => {
     try {
@@ -1512,7 +1587,7 @@ configCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
@@ -1520,33 +1595,121 @@ configCmd.action(async (opts) => {
 // -- Subcommand: listings (query available agent templates) --------
 const DEFAULT_INDEXER = "https://indexer-mainnet.shll.run";
 
+type IndexerListing = {
+    id: string;
+    agentName: string;
+    agentType: string;
+    pricePerDay: string;
+    minDays: number;
+    active: boolean;
+    nfa: string;
+    tokenId?: string;
+    owner?: string;
+};
+
+const LISTING_ID_REGEX = /^0x[0-9a-fA-F]{64}$/;
+
+function isValidListingId(value: string): boolean {
+    return LISTING_ID_REGEX.test(value);
+}
+
+function toSafeInt(value: unknown, fallback: number): number {
+    if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
+    if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+    return fallback;
+}
+
+function normalizeIndexerListing(raw: unknown): IndexerListing | null {
+    if (!raw || typeof raw !== "object") return null;
+    const item = raw as Record<string, unknown>;
+    const id = typeof item.id === "string" ? item.id : "";
+    const nfa = typeof item.nfa === "string" ? item.nfa : "";
+    if (!isValidListingId(id)) return null;
+
+    const pricePerDayRaw = item.pricePerDay;
+    const pricePerDay = typeof pricePerDayRaw === "string"
+        || typeof pricePerDayRaw === "number"
+        || typeof pricePerDayRaw === "bigint"
+        ? String(pricePerDayRaw)
+        : "0";
+
+    return {
+        id,
+        agentName: typeof item.agentName === "string" ? item.agentName : "",
+        agentType: typeof item.agentType === "string" ? item.agentType : "",
+        pricePerDay,
+        minDays: Math.max(0, toSafeInt(item.minDays, 0)),
+        active: item.active === true,
+        nfa,
+        tokenId: typeof item.tokenId === "string" ? item.tokenId : undefined,
+        owner: typeof item.owner === "string" ? item.owner : undefined,
+    };
+}
+
+async function fetchActiveListings(indexerUrl: string): Promise<IndexerListing[]> {
+    const normalized = indexerUrl.replace(/\/+$/, "");
+    const res = await fetch(`${normalized}/api/listings`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`Indexer returned ${res.status}`);
+    const data = await res.json() as { items?: unknown };
+    const items = Array.isArray(data.items) ? data.items : [];
+    return items
+        .map((raw) => normalizeIndexerListing(raw))
+        .filter((l): l is IndexerListing => l !== null && l.active);
+}
+
+function pickPreferredListing(listings: IndexerListing[]): IndexerListing | null {
+    if (listings.length === 0) return null;
+    const nfaLower = DEFAULT_NFA.toLowerCase();
+    const sameNfa = listings.filter((l) => (l.nfa || "").toLowerCase() === nfaLower);
+    const pool = sameNfa.length > 0 ? sameNfa : listings;
+    return pool.find((l) => l.id.toLowerCase() === DEFAULT_LISTING_ID.toLowerCase()) || pool[0] || null;
+}
+
+async function resolveSetupListing(opts: { listingId?: string; indexerUrl: string }) {
+    if (opts.listingId) {
+        return {
+            listingId: opts.listingId,
+            source: "manual" as const,
+            listing: null as IndexerListing | null,
+            warning: null as string | null,
+        };
+    }
+
+    try {
+        const active = await fetchActiveListings(opts.indexerUrl);
+        const selected = pickPreferredListing(active);
+        if (selected) {
+            return {
+                listingId: selected.id,
+                source: "indexer-auto" as const,
+                listing: selected,
+                warning: null as string | null,
+            };
+        }
+        return {
+            listingId: DEFAULT_LISTING_ID,
+            source: "default-fallback" as const,
+            listing: null as IndexerListing | null,
+            warning: "No active listings returned by indexer; fell back to default listingId.",
+        };
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown indexer error";
+        return {
+            listingId: DEFAULT_LISTING_ID,
+            source: "default-fallback" as const,
+            listing: null as IndexerListing | null,
+            warning: `Failed to fetch listings from indexer (${message}); fell back to default listingId.`,
+        };
+    }
+}
+
 const listingsCmd = new Command("listings")
     .description("List all available agent templates for rent")
     .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER)
     .action(async (opts) => {
         try {
             const indexerUrl = opts.indexer || DEFAULT_INDEXER;
-            const res = await fetch(`${indexerUrl}/api/listings`);
-            if (!res.ok) {
-                output({ status: "error", message: `Indexer returned ${res.status}` });
-                process.exit(1);
-            }
-            const data = await res.json() as {
-                items: Array<{
-                    id: string;
-                    agentName: string;
-                    agentType: string;
-                    pricePerDay: string;
-                    minDays: number;
-                    active: boolean;
-                    nfa: string;
-                    tokenId: string;
-                    owner: string;
-                }>;
-                count: number;
-            };
-
-            const available = data.items.filter((l) => l.active);
+            const available = await fetchActiveListings(indexerUrl);
             if (available.length === 0) {
                 output({ status: "success", message: "No active listings found.", listings: [] });
                 return;
@@ -1565,23 +1728,23 @@ const listingsCmd = new Command("listings")
                 status: "success",
                 count: listings.length,
                 listings,
-                hint: "Use the listingId with setup-guide: shll-run setup-guide --listing-id <ID> --days <N>",
+                hint: "Run setup-guide directly (auto-selects listing) or pass --listing-id explicitly.",
             });
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : "Unknown error";
-            output({ status: "error", message });
+            outputError(message, "Run 'shll-run doctor' and retry.");
             process.exit(1);
         }
     });
 
 // -- Subcommand: setup-guide (secure dual-wallet onboarding) ------
 const setupGuideCmd = new Command("setup-guide")
-    .description("Output step-by-step instructions for secure dual-wallet agent setup")
-    .option("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)", DEFAULT_LISTING_ID)
-    .option("-d, --days <number>", "Number of days to rent", "1")
+    .description("Output step-by-step instructions for secure dual-wallet agent setup (auto-selects active listing if omitted)")
+    .option("-l, --listing-id <bytes32>", "Template listing ID (bytes32 hex)")
+    .option("-d, --days <number>", "Number of days to rent (minimum 7)", "7")
     .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--listing-manager <address>", "ListingManagerV2 address", DEFAULT_LISTING_MANAGER)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA);
+    .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER)
+    .option("--listing-manager <address>", "ListingManagerV2 address", DEFAULT_LISTING_MANAGER);
 
 setupGuideCmd.action(async (opts) => {
     try {
@@ -1601,10 +1764,25 @@ setupGuideCmd.action(async (opts) => {
         }
 
         const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const indexerUrl = opts.indexer || DEFAULT_INDEXER;
         const listingManagerAddr = toHex(opts.listingManager || DEFAULT_LISTING_MANAGER) as Address;
-        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
-        const listingId = opts.listingId as string;
+        const nfaAddr = toHex(DEFAULT_NFA) as Address;
+        const manualListingId = opts.listingId as string | undefined;
+        if (manualListingId && !isValidListingId(manualListingId)) {
+            outputError("Invalid --listing-id format.", "Expected bytes32 hex string like 0x + 64 hex chars.");
+            process.exit(1);
+            return;
+        }
+
         const daysToRent = Number(opts.days);
+        if (!Number.isInteger(daysToRent) || daysToRent < 7) {
+            outputError("Invalid --days value.", "Expected an integer day count >= 7, e.g. --days 7.");
+            process.exit(1);
+            return;
+        }
+
+        const resolvedListing = await resolveSetupListing({ listingId: manualListingId, indexerUrl });
+        const listingId = resolvedListing.listingId;
 
         // Query listing to calculate rent cost
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
@@ -1619,18 +1797,33 @@ setupGuideCmd.action(async (opts) => {
             });
             const [, , , pricePerDay, minDays, active] = listing;
             if (!active) {
-                output({ status: "error", message: "Listing is not active" });
+                outputError(
+                    "Selected listing is not active.",
+                    "Run 'shll-run listings' to pick an active listing, then rerun setup-guide with --listing-id.",
+                    { listingId, listingSource: resolvedListing.source },
+                );
                 process.exit(1);
             }
             if (daysToRent < minDays) {
-                output({ status: "error", message: `Minimum rental is ${minDays} days, you requested ${daysToRent}` });
+                outputError(
+                    `Minimum rental is ${minDays} days, you requested ${daysToRent}.`,
+                    `Increase --days to at least ${minDays} and retry.`,
+                    { listingId, listingSource: resolvedListing.source },
+                );
                 process.exit(1);
             }
             const totalRent = BigInt(pricePerDay) * BigInt(daysToRent);
             rentCost = `${(Number(totalRent) / 1e18).toFixed(6)} BNB`;
             priceInfo = ` (${totalRent.toString()} wei)`;
-        } catch {
-            rentCost = "unable to query — check listing-id";
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            outputError(
+                "Failed to query listing on-chain.",
+                "Check --listing-id/--listing-manager/--rpc and retry.",
+                { listingId, listingSource: resolvedListing.source, reason: message },
+            );
+            process.exit(1);
+            return;
         }
 
         // Calculate operator expiry timestamp
@@ -1644,13 +1837,20 @@ setupGuideCmd.action(async (opts) => {
             securityModel: "DUAL-WALLET: Your wallet (owner) stays offline. AI only uses the operator wallet, which CANNOT withdraw vault funds.",
             operatorAddress,
             setupUrl,
+            listingSelection: {
+                source: resolvedListing.source,
+                listingId,
+                listingName: resolvedListing.listing?.agentName || undefined,
+                listingType: resolvedListing.listing?.agentType || undefined,
+            },
+            warning: resolvedListing.warning || undefined,
             rentCost: `${rentCost}${priceInfo}`,
             steps: [
                 {
                     step: 1,
                     title: "Open SHLL Setup Page",
                     action: `Open ${setupUrl} in your browser`,
-                    note: "Connect YOUR wallet (MetaMask/WalletConnect). This is your owner wallet — keep it safe and offline after setup.",
+                    note: "Connect YOUR wallet (MetaMask/WalletConnect). This is your owner wallet 闂?keep it safe and offline after setup.",
                 },
                 {
                     step: 2,
@@ -1667,7 +1867,7 @@ setupGuideCmd.action(async (opts) => {
                 {
                     step: 3,
                     title: "Authorize Operator",
-                    action: "Click 'Authorize Operator' — this gives the AI wallet permission to trade within PolicyGuard safety limits",
+                    action: "Click 'Authorize Operator' 闂?this gives the AI wallet permission to trade within PolicyGuard safety limits",
                     note: `Operator address: ${operatorAddress}`,
                     fallback: {
                         method: "BscScan (manual)",
@@ -1698,7 +1898,7 @@ setupGuideCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
@@ -1713,7 +1913,7 @@ const genWalletCmd = new Command("generate-wallet")
             status: "success",
             address: account.address,
             privateKey: pk,
-            note: "SAVE THIS PRIVATE KEY SECURELY. This is the OPERATOR wallet — it can only trade within PolicyGuard limits. " +
+            note: "SAVE THIS PRIVATE KEY SECURELY. This is the OPERATOR wallet 闂?it can only trade within PolicyGuard limits. " +
                 "It CANNOT withdraw vault funds or transfer your Agent NFT. " +
                 "Send ~$1 of BNB here for gas fees, then set RUNNER_PRIVATE_KEY to this privateKey value.",
             securityReminder: "Use a SEPARATE wallet (MetaMask, hardware wallet) as the owner to rent the agent and fund the vault. " +
@@ -1729,7 +1929,10 @@ const balanceCmd = new Command("balance")
         try {
             const pk = process.env.RUNNER_PRIVATE_KEY;
             if (!pk) {
-                output({ status: "error", message: "RUNNER_PRIVATE_KEY not set. Run `generate-wallet` first to create one." });
+                outputError(
+                    "RUNNER_PRIVATE_KEY not set.",
+                    "Run 'shll-run generate-wallet', then export RUNNER_PRIVATE_KEY and retry.",
+                );
                 process.exit(1);
             }
             const account = privateKeyToAccount(toHex(pk) as Hex);
@@ -1749,7 +1952,130 @@ const balanceCmd = new Command("balance")
             });
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : "Unknown error";
-            output({ status: "error", message });
+            outputError(message, "Run 'shll-run doctor' and retry.");
+            process.exit(1);
+        }
+    });
+
+// -- Subcommand: doctor (runtime self-check) ----------------------
+const doctorCmd = new Command("doctor")
+    .description("Run environment, contract binding, RPC, wallet, and optional token-id access checks")
+    .option("-k, --token-id <number>", "Optional Agent NFA Token ID for access/expiry checks")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
+    .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER)
+    .action(async (opts) => {
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const indexerUrl = (opts.indexer || DEFAULT_INDEXER).replace(/\/+$/, "");
+        const hasRunnerPrivateKey = !!process.env.RUNNER_PRIVATE_KEY;
+        const issues: string[] = [];
+        const checks: Record<string, unknown> = {
+            skillVersion: SKILL_VERSION,
+            bindingsUpdatedAt: BINDINGS_UPDATED_AT,
+            chainId: 56,
+            contracts: {
+                agentNfa: DEFAULT_NFA,
+                policyGuard: DEFAULT_GUARD,
+                listingManagerV2: DEFAULT_LISTING_MANAGER,
+                defaultListingId: DEFAULT_LISTING_ID,
+            },
+            env: {
+                hasRunnerPrivateKey,
+            },
+            rpc: {
+                url: rpcUrl,
+                ok: false,
+            },
+            indexer: {
+                url: indexerUrl,
+                ok: false,
+            },
+        };
+
+        try {
+            // RPC reachability
+            const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+            const blockNumber = await publicClient.getBlockNumber();
+            checks.rpc = { url: rpcUrl, ok: true, latestBlock: blockNumber.toString() };
+
+            // Indexer reachability (status code only)
+            try {
+                const idxRes = await fetch(`${indexerUrl}/api/listings`, { signal: AbortSignal.timeout(8000) });
+                checks.indexer = { url: indexerUrl, ok: idxRes.ok, status: idxRes.status };
+                if (!idxRes.ok) issues.push(`Indexer returned ${idxRes.status}`);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : "Indexer request failed";
+                checks.indexer = { url: indexerUrl, ok: false, error: msg };
+                issues.push(msg);
+            }
+
+            // Wallet checks
+            if (!hasRunnerPrivateKey) {
+                issues.push("RUNNER_PRIVATE_KEY is missing");
+            } else {
+                const account = privateKeyToAccount(toHex(process.env.RUNNER_PRIVATE_KEY || "") as Hex);
+                const bal = await publicClient.getBalance({ address: account.address });
+                const sufficientGas = bal > 1_000_000_000_000_000n; // 0.001 BNB
+                checks.wallet = {
+                    address: account.address,
+                    balanceBNB: (Number(bal) / 1e18).toFixed(6),
+                    sufficientGas,
+                };
+                if (!sufficientGas) issues.push("Operator wallet BNB balance is below 0.001");
+
+                if (opts.tokenId) {
+                    const tokenId = BigInt(opts.tokenId);
+                    const [operatorExpires, userExpires, operator, renter, owner] = await Promise.all([
+                        publicClient.readContract({ address: DEFAULT_NFA as Address, abi: AGENT_NFA_ACCESS_ABI, functionName: "operatorExpiresOf", args: [tokenId] }) as Promise<bigint>,
+                        publicClient.readContract({ address: DEFAULT_NFA as Address, abi: AGENT_NFA_ACCESS_ABI, functionName: "userExpires", args: [tokenId] }) as Promise<bigint>,
+                        publicClient.readContract({ address: DEFAULT_NFA as Address, abi: AGENT_NFA_ACCESS_ABI, functionName: "operatorOf", args: [tokenId] }) as Promise<Address>,
+                        publicClient.readContract({ address: DEFAULT_NFA as Address, abi: AGENT_NFA_ACCESS_ABI, functionName: "userOf", args: [tokenId] }) as Promise<Address>,
+                        publicClient.readContract({ address: DEFAULT_NFA as Address, abi: AGENT_NFA_ACCESS_ABI, functionName: "ownerOf", args: [tokenId] }) as Promise<Address>,
+                    ]);
+                    const now = BigInt(Math.floor(Date.now() / 1000));
+                    const runnerLower = account.address.toLowerCase();
+                    const authorized =
+                        operator.toLowerCase() === runnerLower ||
+                        renter.toLowerCase() === runnerLower ||
+                        owner.toLowerCase() === runnerLower;
+
+                    checks.tokenAccess = {
+                        tokenId: tokenId.toString(),
+                        authorized,
+                        operator,
+                        renter,
+                        owner,
+                        rentalExpired: now > userExpires,
+                        operatorExpired: now > operatorExpires,
+                        rentalExpiresAt: new Date(Number(userExpires) * 1000).toISOString(),
+                        operatorExpiresAt: new Date(Number(operatorExpires) * 1000).toISOString(),
+                        safetyConsole: agentConsoleUrl(tokenId),
+                    };
+
+                    if (!authorized) issues.push(`RUNNER_PRIVATE_KEY wallet is not authorized for token-id ${tokenId}`);
+                    if (now > userExpires) issues.push(`token-id ${tokenId} rental has expired`);
+                    if (now > operatorExpires) issues.push(`token-id ${tokenId} operator authorization has expired`);
+                }
+            }
+
+            const nextSteps = [
+                !hasRunnerPrivateKey ? "Run 'shll-run generate-wallet' then export RUNNER_PRIVATE_KEY." : null,
+                issues.some((i) => i.includes("below 0.001")) ? "Send at least 0.001 BNB to the operator wallet for gas." : null,
+                issues.some((i) => i.includes("not authorized")) ? "Open the safety console and set/renew operator authorization." : null,
+                issues.some((i) => i.includes("rental has expired")) ? "Renew agent subscription at https://shll.run/me." : null,
+                issues.some((i) => i.includes("Indexer returned")) ? "Check indexer service availability or use --indexer with a healthy endpoint." : null,
+                issues.length === 0 ? "Environment looks healthy. You can proceed with trading commands." : null,
+            ].filter(Boolean) as string[];
+
+            output({
+                status: issues.length === 0 ? "success" : "warning",
+                summary: issues.length === 0 ? "All core checks passed." : `${issues.length} issue(s) found.`,
+                issues,
+                next_steps: nextSteps,
+                ...checks,
+            });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            outputError(message, "Check RPC endpoint and key setup, then retry `shll-run doctor`.");
             process.exit(1);
         }
     });
@@ -1827,7 +2153,7 @@ historyCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
@@ -1837,15 +2163,13 @@ const statusCmd = new Command("status")
     .description("Show a security overview: vault balance, operator status, policies, and recent activity")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
     .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD)
     .option("--indexer <url>", "Indexer API URL", DEFAULT_INDEXER);
 
 statusCmd.action(async (opts) => {
     try {
         const tokenId = BigInt(opts.tokenId);
         const rpcUrl = opts.rpc || DEFAULT_RPC;
-        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
+        const nfaAddr = toHex(DEFAULT_NFA) as Address;
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
         const indexerUrl = opts.indexer || DEFAULT_INDEXER;
 
@@ -1951,12 +2275,12 @@ statusCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: lend (Venus Protocol) ───────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: lend (Venus Protocol) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
 const lendCmd = new Command("lend")
     .description("Supply tokens to Venus Protocol to earn yield")
     .requiredOption("-t, --token <symbol>", "Token to supply (BNB, USDT, USDC, BUSD)")
@@ -1988,11 +2312,11 @@ lendCmd.action(async (opts) => {
         const actions: Action[] = [];
 
         if (isBNB) {
-            // vBNB: mint() payable — send BNB directly
+            // vBNB: mint() payable 闂?send BNB directly
             const data = encodeFunctionData({ abi: VBNB_MINT_ABI, functionName: "mint" });
             actions.push({ target: vTokenAddr, value: amount, data });
         } else {
-            // ERC20: approve → mint(amount)
+            // ERC20: approve 闂?mint(amount)
             const currentAllowance = await publicClient.readContract({
                 address: tokenInfo.address,
                 abi: ERC20_ABI,
@@ -2040,12 +2364,12 @@ lendCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: redeem (Venus Protocol) ─────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: redeem (Venus Protocol) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑?
 const redeemCmd = new Command("redeem")
     .description("Withdraw supplied tokens from Venus Protocol")
     .requiredOption("-t, --token <symbol>", "Token to redeem (BNB, USDT, USDC, BUSD)")
@@ -2089,18 +2413,16 @@ redeemCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: lending-info (read-only) ────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: lending-info (read-only) 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
 const lendingInfoCmd = new Command("lending-info")
     .description("Show Venus Protocol supply balances and APY for agent vault")
     .requiredOption("-k, --token-id <number>", "Agent NFA Token ID")
-    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
-    .option("--guard-address <address>", "PolicyGuard contract address", DEFAULT_GUARD);
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
 
 lendingInfoCmd.action(async (opts) => {
     try {
@@ -2118,7 +2440,7 @@ lendingInfoCmd.action(async (opts) => {
 
         for (const [symbol, vTokenAddr] of Object.entries(VENUS_VTOKENS)) {
             try {
-                // balanceOfUnderlying — get supplied amount
+                // balanceOfUnderlying 闂?get supplied amount
                 const supplied = await publicClient.readContract({
                     address: vTokenAddr,
                     abi: VTOKEN_READ_ABI,
@@ -2126,7 +2448,7 @@ lendingInfoCmd.action(async (opts) => {
                     args: [vault],
                 });
 
-                // supplyRatePerBlock — calculate APY
+                // supplyRatePerBlock 闂?calculate APY
                 const ratePerBlock = await publicClient.readContract({
                     address: vTokenAddr,
                     abi: VTOKEN_READ_ABI,
@@ -2165,12 +2487,12 @@ lendingInfoCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
 
-// ── Subcommand: my-agents ───────────────────────────────
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: my-agents 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
 const OPERATOR_OF_ABI = [{
     type: "function" as const, name: "operatorOf",
     inputs: [{ name: "tokenId", type: "uint256" }],
@@ -2181,7 +2503,6 @@ const OPERATOR_OF_ABI = [{
 const myAgentsCmd = new Command("my-agents")
     .description("List all agents where the current RUNNER_PRIVATE_KEY is the operator")
     .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC)
-    .option("--nfa-address <address>", "AgentNFA contract address", DEFAULT_NFA)
     .option("--indexer <url>", "Indexer base URL", DEFAULT_INDEXER);
 
 myAgentsCmd.action(async (opts) => {
@@ -2192,7 +2513,7 @@ myAgentsCmd.action(async (opts) => {
         }
         const operator = privateKeyToAccount(toHex(process.env.RUNNER_PRIVATE_KEY)).address.toLowerCase();
         const rpcUrl = opts.rpc || DEFAULT_RPC;
-        const nfaAddr = toHex(opts.nfaAddress || DEFAULT_NFA) as Address;
+        const nfaAddr = toHex(DEFAULT_NFA) as Address;
         const indexerUrl = (opts.indexer || DEFAULT_INDEXER).replace(/\/+$/, "");
         const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
 
@@ -2244,7 +2565,374 @@ myAgentsCmd.action(async (opts) => {
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        output({ status: "error", message });
+        outputError(message, "Run 'shll-run doctor' and retry.");
+        process.exit(1);
+    }
+});
+
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Four.meme Launchpad Constants 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
+const FOUR_MEME_HELPER_V3 = "0xF251F83e40a78868FcfA3FA4599Dad6494E46034" as Address;
+
+// Four.meme TokenManagerHelper3 ABI (query + routing)
+const FOUR_MEME_HELPER_ABI = [
+    {
+        type: "function" as const, name: "getTokenInfo",
+        inputs: [{ name: "token", type: "address" }],
+        outputs: [
+            { name: "version", type: "uint256" },
+            { name: "tokenManager", type: "address" },
+            { name: "quote", type: "address" },
+            { name: "lastPrice", type: "uint256" },
+            { name: "tradingFeeRate", type: "uint256" },
+            { name: "minTradingFee", type: "uint256" },
+            { name: "launchTime", type: "uint256" },
+            { name: "offers", type: "uint256" },
+            { name: "maxOffers", type: "uint256" },
+            { name: "funds", type: "uint256" },
+            { name: "maxFunds", type: "uint256" },
+            { name: "liquidityAdded", type: "bool" },
+        ],
+        stateMutability: "view" as const,
+    },
+    {
+        type: "function" as const, name: "tryBuy",
+        inputs: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint256" },
+            { name: "funds", type: "uint256" },
+        ],
+        outputs: [
+            { name: "tokenManager", type: "address" },
+            { name: "quote", type: "address" },
+            { name: "estimatedAmount", type: "uint256" },
+            { name: "estimatedCost", type: "uint256" },
+            { name: "estimatedFee", type: "uint256" },
+            { name: "amountMsgValue", type: "uint256" },
+            { name: "amountApproval", type: "uint256" },
+            { name: "amountFunds", type: "uint256" },
+        ],
+        stateMutability: "view" as const,
+    },
+    {
+        type: "function" as const, name: "trySell",
+        inputs: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint256" },
+        ],
+        outputs: [
+            { name: "tokenManager", type: "address" },
+            { name: "quote", type: "address" },
+            { name: "funds", type: "uint256" },
+            { name: "fee", type: "uint256" },
+        ],
+        stateMutability: "view" as const,
+    },
+] as const;
+
+// Four.meme TokenManager V1 ABI (pre-Sep 2024 tokens)
+const FOUR_MEME_V1_ABI = [
+    {
+        type: "function" as const, name: "purchaseTokenAMAP",
+        inputs: [
+            { name: "token", type: "address" },
+            { name: "funds", type: "uint256" },
+            { name: "minAmount", type: "uint256" },
+        ],
+        outputs: [],
+        stateMutability: "payable" as const,
+    },
+    {
+        type: "function" as const, name: "saleToken",
+        inputs: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint256" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable" as const,
+    },
+] as const;
+
+// Four.meme TokenManager2 V2 ABI (post-Sep 2024 tokens)
+const FOUR_MEME_V2_ABI = [
+    {
+        type: "function" as const, name: "buyTokenAMAP",
+        inputs: [
+            { name: "token", type: "address" },
+            { name: "funds", type: "uint256" },
+            { name: "minAmount", type: "uint256" },
+        ],
+        outputs: [],
+        stateMutability: "payable" as const,
+    },
+    {
+        type: "function" as const, name: "sellToken",
+        inputs: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint256" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable" as const,
+    },
+] as const;
+
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: four-info 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
+const fourInfoCmd = new Command("four-info")
+    .description("Query Four.meme bonding curve token info (price, progress, DEX status)")
+    .requiredOption("--token <address>", "Token contract address on Four.meme")
+    .option("-r, --rpc <url>", "BSC RPC URL", DEFAULT_RPC);
+
+fourInfoCmd.action(async (opts) => {
+    try {
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+        const tokenAddr = opts.token as Address;
+
+        const info = await publicClient.readContract({
+            address: FOUR_MEME_HELPER_V3,
+            abi: FOUR_MEME_HELPER_ABI,
+            functionName: "getTokenInfo",
+            args: [tokenAddr],
+        });
+
+        const [version, tokenManager, quote, lastPrice, tradingFeeRate, minTradingFee,
+            launchTime, offers, maxOffers, funds, maxFunds, liquidityAdded] = info;
+
+        const progressPct = maxFunds > 0n ? Number((funds * 10000n) / maxFunds) / 100 : 0;
+        const offersPct = maxOffers > 0n ? Number(((maxOffers - offers) * 10000n) / maxOffers) / 100 : 0;
+
+        output({
+            status: "success",
+            token: tokenAddr,
+            version: Number(version),
+            tokenManager,
+            quoteToken: quote === "0x0000000000000000000000000000000000000000" ? "BNB" : quote,
+            lastPrice: lastPrice.toString(),
+            lastPriceHuman: (Number(lastPrice) / 1e18).toExponential(4),
+            tradingFeeRate: `${Number(tradingFeeRate) / 100}%`,
+            minTradingFee: minTradingFee.toString(),
+            launchTime: new Date(Number(launchTime) * 1000).toISOString(),
+            offers: offers.toString(),
+            maxOffers: maxOffers.toString(),
+            tokensSoldPct: `${offersPct.toFixed(2)}%`,
+            fundsRaised: funds.toString(),
+            fundsRaisedBNB: (Number(funds) / 1e18).toFixed(4),
+            maxFunds: maxFunds.toString(),
+            maxFundsBNB: (Number(maxFunds) / 1e18).toFixed(4),
+            bondingCurveProgress: `${progressPct.toFixed(2)}%`,
+            liquidityAdded,
+            tradingPhase: liquidityAdded ? "DEX (PancakeSwap)" : "Internal (Bonding Curve)",
+        });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        outputError(message, "Run 'shll-run doctor' and retry.");
+        process.exit(1);
+    }
+});
+
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: four-buy 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕
+const fourBuyCmd = new Command("four-buy")
+    .description("Buy tokens on Four.meme internal bonding curve using BNB")
+    .requiredOption("--token <address>", "Token contract address")
+    .requiredOption("-a, --amount <bnb>", "BNB amount to spend (human-readable, e.g. 0.01)")
+    .option("-s, --slippage <percent>", "Slippage tolerance in percent (default: 10)", "10");
+addSharedOptions(fourBuyCmd);
+
+fourBuyCmd.action(async (opts) => {
+    try {
+        const client = createClient(opts);
+        const tokenId = BigInt(opts.tokenId);
+        await checkAccess(opts, tokenId);
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+        const vault = await client.getVault(tokenId);
+
+        const tokenAddr = opts.token as Address;
+        const slippage = Number(opts.slippage);
+        const bnbAmount = parseAmount(opts.amount, 18);
+
+        // 1. Get token info to check status
+        const info = await publicClient.readContract({
+            address: FOUR_MEME_HELPER_V3,
+            abi: FOUR_MEME_HELPER_ABI,
+            functionName: "getTokenInfo",
+            args: [tokenAddr],
+        });
+        const [version, tokenManager, quote, , , , , , , , , liquidityAdded] = info;
+
+        if (liquidityAdded) {
+            output({ status: "error", message: "Token has already migrated to DEX. Use the 'swap' command instead of 'four-buy'." });
+            process.exit(1);
+        }
+
+        const isQuoteBNB = quote === "0x0000000000000000000000000000000000000000";
+        if (!isQuoteBNB) {
+            output({ status: "error", message: `Token uses BEP20 quote (${quote}), not BNB. BEP20 quote pairs are not yet supported in this tool.` });
+            process.exit(1);
+        }
+
+        // 2. Pre-calculate buy estimate
+        const tryBuyResult = await publicClient.readContract({
+            address: FOUR_MEME_HELPER_V3,
+            abi: FOUR_MEME_HELPER_ABI,
+            functionName: "tryBuy",
+            args: [tokenAddr, 0n, bnbAmount],
+        });
+        const [, , estimatedAmount, estimatedCost, estimatedFee, amountMsgValue] = tryBuyResult;
+
+        // Align to GWEI precision (Four.meme requirement)
+        const minAmount = (estimatedAmount * BigInt(100 - slippage)) / 100n;
+        const alignedMinAmount = (minAmount / 1000000000n) * 1000000000n;
+
+        output({
+            status: "info",
+            message: `Four.meme Buy: ~${(Number(estimatedAmount) / 1e18).toFixed(4)} tokens for ${opts.amount} BNB` +
+                ` | fee: ${(Number(estimatedFee) / 1e18).toFixed(6)} BNB | minOut: ${(Number(alignedMinAmount) / 1e18).toFixed(4)} (${slippage}% slippage)`,
+        });
+
+        // 3. Build buy action based on version
+        let data: Hex;
+        if (Number(version) === 1) {
+            data = encodeFunctionData({
+                abi: FOUR_MEME_V1_ABI,
+                functionName: "purchaseTokenAMAP",
+                args: [tokenAddr, bnbAmount, alignedMinAmount],
+            });
+        } else {
+            data = encodeFunctionData({
+                abi: FOUR_MEME_V2_ABI,
+                functionName: "buyTokenAMAP",
+                args: [tokenAddr, bnbAmount, alignedMinAmount],
+            });
+        }
+
+        const action = {
+            target: tokenManager as Address,
+            value: amountMsgValue,
+            data,
+        };
+
+        // 4. Validate + execute
+        const simResult = await client.validate(tokenId, action);
+        if (!simResult.ok) {
+            output({ status: "rejected", reason: simResult.reason });
+            process.exit(0);
+        }
+
+        const result = await client.execute(tokenId, action, true);
+        output({
+            status: "success",
+            hash: result.hash,
+            protocol: "four.meme",
+            action: "buy",
+            bnbSpent: opts.amount,
+            estimatedTokens: (Number(estimatedAmount) / 1e18).toFixed(4),
+        });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        outputError(message, "Run 'shll-run doctor' and retry.");
+        process.exit(1);
+    }
+});
+
+// 闂佸啿鍘滈崑鎾绘煃閸忓浜?Subcommand: four-sell 闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸嬫捇鏌嶉崗澶婁壕闂佸啿鍘滈崑鎾绘煃閸忓浜鹃梺鍐插帨閸?
+const fourSellCmd = new Command("four-sell")
+    .description("Sell tokens on Four.meme internal bonding curve")
+    .requiredOption("--token <address>", "Token contract address")
+    .requiredOption("-a, --amount <number>", "Amount of tokens to sell (human-readable, e.g. 1000)")
+    .option("-s, --slippage <percent>", "Slippage tolerance in percent (default: 10)", "10");
+addSharedOptions(fourSellCmd);
+
+fourSellCmd.action(async (opts) => {
+    try {
+        const client = createClient(opts);
+        const tokenId = BigInt(opts.tokenId);
+        await checkAccess(opts, tokenId);
+        const rpcUrl = opts.rpc || DEFAULT_RPC;
+        const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+
+        const tokenAddr = opts.token as Address;
+        const sellAmount = parseAmount(opts.amount, 18);
+        // Align to GWEI precision
+        const alignedAmount = (sellAmount / 1000000000n) * 1000000000n;
+
+        // 1. Get token info
+        const info = await publicClient.readContract({
+            address: FOUR_MEME_HELPER_V3,
+            abi: FOUR_MEME_HELPER_ABI,
+            functionName: "getTokenInfo",
+            args: [tokenAddr],
+        });
+        const [version, tokenManager, , , , , , , , , , liquidityAdded] = info;
+
+        if (liquidityAdded) {
+            output({ status: "error", message: "Token has already migrated to DEX. Use the 'swap' command instead of 'four-sell'." });
+            process.exit(1);
+        }
+
+        // 2. Pre-calculate sell estimate
+        const trySellResult = await publicClient.readContract({
+            address: FOUR_MEME_HELPER_V3,
+            abi: FOUR_MEME_HELPER_ABI,
+            functionName: "trySell",
+            args: [tokenAddr, alignedAmount],
+        });
+        const [, , estimatedFunds, estimatedFee] = trySellResult;
+
+        output({
+            status: "info",
+            message: `Four.meme Sell: ${opts.amount} tokens 闂?~${(Number(estimatedFunds) / 1e18).toFixed(6)} BNB` +
+                ` | fee: ${(Number(estimatedFee) / 1e18).toFixed(6)} BNB`,
+        });
+
+        // 3. Build actions: approve + sell
+        const actions: { target: Address; value: bigint; data: Hex }[] = [];
+
+        // Approve TokenManager to spend tokens
+        const approveData = encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [tokenManager as Address, alignedAmount],
+        });
+        actions.push({ target: tokenAddr, value: 0n, data: approveData });
+
+        // Sell action
+        let sellData: Hex;
+        if (Number(version) === 1) {
+            sellData = encodeFunctionData({
+                abi: FOUR_MEME_V1_ABI,
+                functionName: "saleToken",
+                args: [tokenAddr, alignedAmount],
+            });
+        } else {
+            sellData = encodeFunctionData({
+                abi: FOUR_MEME_V2_ABI,
+                functionName: "sellToken",
+                args: [tokenAddr, alignedAmount],
+            });
+        }
+        actions.push({ target: tokenManager as Address, value: 0n, data: sellData });
+
+        // 4. Validate + execute batch
+        for (const action of actions) {
+            const simResult = await client.validate(tokenId, action);
+            if (!simResult.ok) {
+                output({ status: "rejected", reason: simResult.reason });
+                process.exit(0);
+            }
+        }
+
+        const result = await client.executeBatch(tokenId, actions, true);
+        output({
+            status: "success",
+            hash: result.hash,
+            protocol: "four.meme",
+            action: "sell",
+            tokensSold: opts.amount,
+            estimatedBNB: (Number(estimatedFunds) / 1e18).toFixed(6),
+        });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        outputError(message, "Run 'shll-run doctor' and retry.");
         process.exit(1);
     }
 });
@@ -2265,12 +2953,17 @@ program.addCommand(setupGuideCmd);
 program.addCommand(listingsCmd);
 program.addCommand(genWalletCmd);
 program.addCommand(balanceCmd);
+program.addCommand(doctorCmd);
 program.addCommand(historyCmd);
 program.addCommand(statusCmd);
 program.addCommand(lendCmd);
 program.addCommand(redeemCmd);
 program.addCommand(lendingInfoCmd);
 program.addCommand(myAgentsCmd);
+program.addCommand(fourInfoCmd);
+program.addCommand(fourBuyCmd);
+program.addCommand(fourSellCmd);
 program.parse(process.argv);
+
 
 
