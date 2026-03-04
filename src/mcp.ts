@@ -455,7 +455,7 @@ function checkActionRecipientSafety(action: Action, vault: Address): RecipientCh
 
 const server = new McpServer({
     name: "shll-defi",
-    version: "5.5.2",
+    version: "5.5.3",
 });
 
 // 鈹€鈹€ Tool: portfolio 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€

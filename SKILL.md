@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands and users only need to chat.
-version: 5.5.2
+version: 5.5.3
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
@@ -48,7 +48,7 @@ On-chain guardrails:
 - Spending limits, cooldowns, whitelist rules, and protocol rules are enforced on-chain.
 - Raw calldata path is guarded by recipient safety checks before on-chain execution.
 
-## Current Critical Constraints (v5.5.2)
+## Current Critical Constraints (v5.5.3)
 
 1. `init` command is disabled. Do not use it.
 2. CLI `raw` requires `--i-understand-the-risk`.
