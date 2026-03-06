@@ -2,7 +2,7 @@
  * SHLL Shared Client Setup - PolicyClient and viem client factories.
  * Used by both CLI and MCP entry points.
  */
-import { createPublicClient, createWalletClient, http, type Address, type Hex } from "viem";
+import { createPublicClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { bsc } from "viem/chains";
 import { PolicyClient } from "shll-policy-sdk";
@@ -43,20 +43,6 @@ export function createClients(rpcUrl?: string) {
         chainId: 56,
     });
     return { account, publicClient, policyClient, rpc: writeRpc };
-}
-
-/**
- * Create a wallet client for direct on-chain writes (e.g. policy config).
- * Requires RUNNER_PRIVATE_KEY env.
- */
-export function createWallet(rpcUrl?: string) {
-    const privateKey = process.env.RUNNER_PRIVATE_KEY;
-    if (!privateKey) throw new Error("RUNNER_PRIVATE_KEY environment variable is required");
-
-    const rpc = rpcUrl || DEFAULT_RPC;
-    const account = privateKeyToAccount(toHex(privateKey));
-    const walletClient = createWalletClient({ account, chain: bsc, transport: http(rpc) });
-    return { account, walletClient };
 }
 
 export { generatePrivateKey, privateKeyToAccount };

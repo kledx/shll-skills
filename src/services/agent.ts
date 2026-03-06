@@ -10,12 +10,10 @@ import {
     createClients,
     createReadOnlyClient,
     privateKeyToAccount,
-    createWallet,
-    parseAmount,
     toHex,
 } from "../shared/index.js";
 import { SkillError } from "../shared/errors.js";
-import { ensureAccess, parseTokenId } from "./common.js";
+import { parseTokenId } from "./common.js";
 
 interface PolicyDescriptor {
     policyTypeName: string;
@@ -324,71 +322,57 @@ export async function getHistory(tokenIdRaw: string, limit: number) {
     };
 }
 
-export async function updateRiskConfig(
-    tokenIdRaw: string,
-    options: {
-        txLimit?: string;
-        dailyLimit?: string;
-        cooldown?: string;
-        rpcUrl?: string;
-    },
-) {
-    if (!options.txLimit && !options.dailyLimit && !options.cooldown) {
-        throw new SkillError("INVALID_INPUT", "Must specify at least one policy config option");
-    }
-
+/**
+ * Read-only policy config guidance. Returns current values and directs
+ * the user to the web console for modifications.
+ */
+export async function getPolicyConfigGuidance(tokenIdRaw: string, rpcUrl?: string) {
     const tokenId = parseTokenId(tokenIdRaw);
-    const { publicClient, policyClient, rpc } = createClients(options.rpcUrl);
-    await ensureAccess(tokenId, rpc, publicClient);
-    const { walletClient } = createWallet(rpc);
+    const { publicClient, policyClient } = createClients(rpcUrl);
     const policies = await policyClient.getPolicies(tokenId) as PolicyDescriptor[];
-    const results: string[] = [];
+    const consoleUrl = agentConsoleUrl(tokenId);
+    const currentConfig: Record<string, unknown> = {};
 
-    if (options.txLimit || options.dailyLimit) {
-        const spendingPolicy = policies.find((policy) => policy.policyTypeName === "spending_limit");
-        if (!spendingPolicy) {
-            throw new SkillError("NOT_FOUND", "No SpendingLimitPolicy found");
+    const spendingPolicy = policies.find((p) => p.policyTypeName === "spending_limit");
+    if (spendingPolicy) {
+        try {
+            const [maxPerTx, maxPerDay, maxSlippageBps] = await publicClient.readContract({
+                address: spendingPolicy.address,
+                abi: SPENDING_LIMIT_ABI,
+                functionName: "instanceLimits",
+                args: [tokenId],
+            }) as [bigint, bigint, bigint];
+            currentConfig.spendingLimit = {
+                maxPerTx: (Number(maxPerTx) / 1e18).toFixed(4) + " BNB",
+                maxPerDay: (Number(maxPerDay) / 1e18).toFixed(4) + " BNB",
+                slippageBps: maxSlippageBps.toString(),
+            };
+        } catch {
+            // ignore unreadable policy config
         }
-        const current = await publicClient.readContract({
-            address: spendingPolicy.address,
-            abi: SPENDING_LIMIT_ABI,
-            functionName: "instanceLimits",
-            args: [tokenId],
-        }) as [bigint, bigint, bigint];
-        const [curMaxPerTx, curMaxPerDay, curSlippage] = current;
-        const hash = await walletClient.writeContract({
-            address: spendingPolicy.address,
-            abi: SPENDING_LIMIT_ABI,
-            functionName: "setLimits",
-            args: [
-                tokenId,
-                options.txLimit ? parseAmount(options.txLimit, 18) : curMaxPerTx,
-                options.dailyLimit ? parseAmount(options.dailyLimit, 18) : curMaxPerDay,
-                curSlippage,
-            ],
-        });
-        await publicClient.waitForTransactionReceipt({ hash });
-        results.push(`SpendingLimit updated: ${hash}`);
     }
 
-    if (options.cooldown) {
-        const cooldownPolicy = policies.find((policy) => policy.policyTypeName === "cooldown");
-        if (!cooldownPolicy) {
-            throw new SkillError("NOT_FOUND", "No CooldownPolicy found");
+    const cooldownPolicy = policies.find((p) => p.policyTypeName === "cooldown");
+    if (cooldownPolicy) {
+        try {
+            const cooldown = await publicClient.readContract({
+                address: cooldownPolicy.address,
+                abi: COOLDOWN_ABI,
+                functionName: "cooldownSeconds",
+                args: [tokenId],
+            }) as bigint;
+            currentConfig.cooldown = { seconds: Number(cooldown) };
+        } catch {
+            // ignore unreadable policy config
         }
-        const hash = await walletClient.writeContract({
-            address: cooldownPolicy.address,
-            abi: COOLDOWN_ABI,
-            functionName: "setCooldown",
-            args: [tokenId, BigInt(options.cooldown)],
-        });
-        await publicClient.waitForTransactionReceipt({ hash });
-        results.push(`Cooldown updated: ${hash}`);
     }
 
     return {
-        status: "success",
-        details: results,
+        status: "read_only",
+        tokenId: tokenIdRaw,
+        currentConfig,
+        message: "Policy modification via Skills is disabled. Please use the web console to adjust your security settings.",
+        consoleUrl,
     };
 }
 

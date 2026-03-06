@@ -2,8 +2,23 @@ import type { Action, PolicyClient } from "shll-policy-sdk";
 import { isAddress, type Address } from "viem";
 import {
     checkAccess,
+    ERC20_ABI,
+    FOUR_MEME_V1_ABI,
+    FOUR_MEME_V2_ABI,
     policyRejectionHelp,
+    SWAP_EXACT_ETH_ABI,
+    SWAP_EXACT_ETH_FOR_TOKENS_FEE_ABI,
+    SWAP_EXACT_TOKENS_ABI,
+    SWAP_EXACT_TOKENS_FOR_ETH_ABI,
+    SWAP_EXACT_TOKENS_FOR_ETH_FEE_ABI,
+    SWAP_EXACT_TOKENS_FOR_TOKENS_FEE_ABI,
+    tryDecodeCalldata,
     type RecipientCheckResult,
+    V3_EXACT_INPUT_ABI,
+    V3_EXACT_INPUT_SINGLE_ABI,
+    VBNB_MINT_ABI,
+    VTOKEN_ABI,
+    WBNB_ABI,
 } from "../shared/index.js";
 import { SkillError } from "../shared/errors.js";
 
@@ -59,13 +74,18 @@ export async function validateActionsOrThrow(
     tokenId: bigint,
     actions: Action[],
 ): Promise<void> {
-    for (const action of actions) {
+    for (const [index, action] of actions.entries()) {
         const sim = await policyClient.validate(tokenId, action);
         if (!sim.ok) {
             throw new SkillError(
                 "POLICY_REJECTED",
                 "Policy rejected transaction",
                 {
+                    failedActionIndex: index,
+                    failedActionTarget: action.target,
+                    failedActionSelector: getActionSelector(action),
+                    failedActionFunction: getActionFunctionName(action),
+                    failedActionValue: action.value.toString(),
                     reason: sim.reason,
                     ...policyRejectionHelp(sim.reason, tokenId.toString()),
                 },
@@ -89,4 +109,40 @@ export async function executeActions(
     }
     const result = await policyClient.executeBatch(tokenId, actions, true);
     return { hash: result.hash };
+}
+
+function getActionSelector(action: Action): string {
+    return action.data && action.data.length >= 10 ? action.data.slice(0, 10) : "0x";
+}
+
+function getActionFunctionName(action: Action): string {
+    if (action.data === "0x") {
+        return "nativeTransfer";
+    }
+
+    const candidates = [
+        ERC20_ABI,
+        WBNB_ABI,
+        VTOKEN_ABI,
+        VBNB_MINT_ABI,
+        SWAP_EXACT_ETH_ABI,
+        SWAP_EXACT_TOKENS_ABI,
+        SWAP_EXACT_TOKENS_FOR_ETH_ABI,
+        SWAP_EXACT_ETH_FOR_TOKENS_FEE_ABI,
+        SWAP_EXACT_TOKENS_FOR_TOKENS_FEE_ABI,
+        SWAP_EXACT_TOKENS_FOR_ETH_FEE_ABI,
+        V3_EXACT_INPUT_SINGLE_ABI,
+        V3_EXACT_INPUT_ABI,
+        FOUR_MEME_V1_ABI,
+        FOUR_MEME_V2_ABI,
+    ] as const;
+
+    for (const abi of candidates) {
+        const decoded = tryDecodeCalldata(abi, action.data);
+        if (decoded?.functionName) {
+            return decoded.functionName;
+        }
+    }
+
+    return "unknown";
 }

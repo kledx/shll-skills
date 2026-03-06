@@ -14,7 +14,7 @@ export const DEFAULT_LISTING_ID = "0x64083b44e38db02749e6e16bf84ce6c19146cc42a10
 export const DEFAULT_INDEXER = "https://indexer-mainnet.shll.run";
 
 // === Version ===
-export const SKILL_VERSION = "6.0.0";
+export const SKILL_VERSION = "6.0.2";
 export const BINDINGS_UPDATED_AT = "2026-03-06";
 
 // === PancakeSwap ===

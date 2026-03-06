@@ -5,7 +5,7 @@ import {
     getPolicySummary,
     getStatusOverview,
     readTokenRestriction,
-    updateRiskConfig,
+    getPolicyConfigGuidance,
 } from "../services/index.js";
 import { CommonSchemas, formatMcpError } from "../shared/index.js";
 
@@ -76,23 +76,17 @@ export function registerAgentTools(server: McpServer) {
 
     server.tool(
         "config",
-        "Configure risk parameters",
+        "View current risk parameters and get a link to the web console for modifications",
         {
             token_id: CommonSchemas.tokenId.describe("Agent Token ID"),
-            tx_limit: z.string().optional().describe("Max BNB per tx"),
-            daily_limit: z.string().optional().describe("Max BNB per day"),
-            cooldown: z.string().optional().describe("Seconds between tx"),
         },
-        async ({ token_id, tx_limit, daily_limit, cooldown }) => {
+        async ({ token_id }) => {
             try {
-                return asToolResult(await updateRiskConfig(token_id, {
-                    txLimit: tx_limit,
-                    dailyLimit: daily_limit,
-                    cooldown,
-                }));
+                return asToolResult(await getPolicyConfigGuidance(token_id));
             } catch (error) {
                 return formatMcpError(error);
             }
         },
     );
 }
+

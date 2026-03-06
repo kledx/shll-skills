@@ -3,7 +3,7 @@ import {
     getHistory,
     getPolicySummary,
     getStatusOverview,
-    updateRiskConfig,
+    getPolicyConfigGuidance,
 } from "../services/index.js";
 import { addSharedOptions, output, outputError } from "./utils.js";
 
@@ -27,18 +27,10 @@ export function registerAgentCommands(program: Command) {
     });
 
     const configCmd = new Command("config")
-        .description("Configure agent risk parameters (Requires RENTER status!)")
-        .option("--tx-limit <amount>", "Max BNB per tx")
-        .option("--daily-limit <amount>", "Max BNB per day")
-        .option("--cooldown <seconds>", "Seconds between tx");
+        .description("View current risk parameters (modify via web console)");
     addSharedOptions(configCmd).action(async (opts) => {
         try {
-            output(await updateRiskConfig(opts.tokenId, {
-                txLimit: opts.txLimit,
-                dailyLimit: opts.dailyLimit,
-                cooldown: opts.cooldown,
-                rpcUrl: opts.rpc,
-            }));
+            output(await getPolicyConfigGuidance(opts.tokenId, opts.rpc));
         } catch (error) {
             outputError(error);
             process.exit(1);
@@ -76,3 +68,4 @@ export function registerAgentCommands(program: Command) {
     program.addCommand(statusCmd);
     program.addCommand(historyCmd);
 }
+

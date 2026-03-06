@@ -21,10 +21,10 @@ function runCli(args, envOverrides = {}) {
     });
 }
 
-test("CLI help exposes v6.0.0 and history command", () => {
+test("CLI help exposes v6.0.2 and history command", () => {
     const result = runCli(["--help"]);
     assert.equal(result.status, 0);
-    assert.match(result.stdout, /v6\.0\.0/);
+    assert.match(result.stdout, /v6\.0\.2/);
     assert.match(result.stdout, /history \[options\]/);
 });
 

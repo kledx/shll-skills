@@ -149,21 +149,17 @@ export const LISTING_MANAGER_ABI = [
     },
 ] as const;
 
-// === Policy Configuration ===
+// === Policy Configuration (read-only; writes are done via web console) ===
 export const SPENDING_LIMIT_ABI = [
-    { type: "function" as const, name: "setLimits", inputs: [{ name: "instanceId", type: "uint256" }, { name: "maxPerTx", type: "uint256" }, { name: "maxPerDay", type: "uint256" }, { name: "maxSlippageBps", type: "uint256" }], outputs: [], stateMutability: "nonpayable" as const },
     { type: "function" as const, name: "instanceLimits", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "maxPerTx", type: "uint256" }, { name: "maxPerDay", type: "uint256" }, { name: "maxSlippageBps", type: "uint256" }], stateMutability: "view" as const },
     { type: "function" as const, name: "tokenRestrictionEnabled", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" as const },
     { type: "function" as const, name: "getTokenList", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "", type: "address[]" }], stateMutability: "view" as const },
-    { type: "function" as const, name: "addToken", inputs: [{ name: "instanceId", type: "uint256" }, { name: "token", type: "address" }], outputs: [], stateMutability: "nonpayable" as const },
-    { type: "function" as const, name: "removeToken", inputs: [{ name: "instanceId", type: "uint256" }, { name: "token", type: "address" }], outputs: [], stateMutability: "nonpayable" as const },
-    { type: "function" as const, name: "setTokenRestriction", inputs: [{ name: "instanceId", type: "uint256" }, { name: "enabled", type: "bool" }], outputs: [], stateMutability: "nonpayable" as const },
 ] as const;
 
 export const COOLDOWN_ABI = [
-    { type: "function" as const, name: "setCooldown", inputs: [{ name: "instanceId", type: "uint256" }, { name: "seconds_", type: "uint256" }], outputs: [], stateMutability: "nonpayable" as const },
     { type: "function" as const, name: "cooldownSeconds", inputs: [{ name: "instanceId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" as const },
 ] as const;
+
 
 // === Four.meme ===
 export const FOUR_MEME_HELPER_ABI = [

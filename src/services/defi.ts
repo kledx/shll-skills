@@ -7,8 +7,7 @@ import {
     ERC20_ABI,
     WBNB_ABI,
     SWAP_EXACT_ETH_ABI,
-    SWAP_EXACT_TOKENS_ABI,
-    SWAP_EXACT_TOKENS_FOR_ETH_ABI,
+    SWAP_EXACT_TOKENS_FOR_TOKENS_FEE_ABI,
     V3_EXACT_INPUT_SINGLE_ABI,
     V3_QUOTE_ABI,
     PANCAKE_V2_ROUTER,
@@ -18,6 +17,7 @@ import {
     GET_AMOUNTS_OUT_ABI,
 } from "../shared/index.js";
 import { SkillError } from "../shared/errors.js";
+import { buyFourMeme, getFourMemeInfo, sellFourMeme } from "./fourmeme.js";
 import {
     assertPositiveAmount,
     ensureAccess,
@@ -57,6 +57,28 @@ export async function executeSwap(input: SwapInput) {
 
     const isNativeIn = tokenIn.address === ZERO_ADDRESS;
     const isNativeOut = tokenOut.address === ZERO_ADDRESS;
+
+    // Smart Routing Logic: Auto-route to Four.meme if applicable
+    if (isNativeIn && !isNativeOut) {
+        try {
+            const fourInfo = await getFourMemeInfo(tokenOut.address);
+            if (fourInfo.tradingPhase === "Internal (Bonding Curve)") {
+                return buyFourMeme(input.tokenId, tokenOut.address, input.amount, slippage, input.rpcUrl);
+            }
+        } catch (e) {
+            // Not a Four.meme token, continue to normal DEX swap
+        }
+    } else if (!isNativeIn && isNativeOut) {
+        try {
+            const fourInfo = await getFourMemeInfo(tokenIn.address);
+            if (fourInfo.tradingPhase === "Internal (Bonding Curve)") {
+                return sellFourMeme(input.tokenId, tokenIn.address, input.amount, slippage, input.rpcUrl);
+            }
+        } catch (e) {
+            // Not a Four.meme token, continue to normal DEX swap
+        }
+    }
+
     const pathIn = isNativeIn ? WBNB : tokenIn.address;
     const pathOut = isNativeOut ? WBNB : tokenOut.address;
     const actions: Action[] = [];
@@ -64,7 +86,7 @@ export async function executeSwap(input: SwapInput) {
     if (input.version === "V3") {
         const quote = await getBestV3Quote(publicClient, pathIn, pathOut, amountIn);
         if (!quote || quote.estimatedAmountOut === 0n) {
-            throw new SkillError("NOT_SUPPORTED", "No V3 liquidity found for pair");
+            throw new SkillError("NOT_SUPPORTED", `No V3 liquidity or path found for ${tokenIn.symbol} -> ${tokenOut.symbol} (Path used: ${pathIn} -> ${pathOut})`);
         }
         const minOut = applySlippage(quote.estimatedAmountOut, slippage);
 
@@ -100,15 +122,21 @@ export async function executeSwap(input: SwapInput) {
     } else {
         const v2Router = PANCAKE_V2_ROUTER as Address;
         const path = [pathIn as Address, pathOut as Address];
-        const amountsOut = await publicClient.readContract({
-            address: v2Router,
-            abi: GET_AMOUNTS_OUT_ABI,
-            functionName: "getAmountsOut",
-            args: [amountIn, path],
-        });
-        const estimatedOut = (amountsOut as bigint[])[1];
+        let estimatedOut = 0n;
+        try {
+            const amountsOut = await publicClient.readContract({
+                address: v2Router,
+                abi: GET_AMOUNTS_OUT_ABI,
+                functionName: "getAmountsOut",
+                args: [amountIn, path],
+            });
+            estimatedOut = (amountsOut as bigint[])[1];
+        } catch (error: any) {
+            throw new SkillError("NOT_SUPPORTED", `No V2 liquidity or direct path found for ${tokenIn.symbol} -> ${tokenOut.symbol}. The pair might not exist or lacks reserves. (Path used: ${pathIn} -> ${pathOut})`);
+        }
+
         if (!estimatedOut || estimatedOut === 0n) {
-            throw new SkillError("NOT_SUPPORTED", "No V2 liquidity found for pair");
+            throw new SkillError("NOT_SUPPORTED", `No V2 liquidity found for ${tokenIn.symbol} -> ${tokenOut.symbol} pair`);
         }
         const minOut = applySlippage(estimatedOut, slippage);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 180);
@@ -123,26 +151,11 @@ export async function executeSwap(input: SwapInput) {
                     args: [minOut, path, vault, deadline],
                 }),
             });
-        } else if (isNativeOut) {
-            actions.push({
-                target: tokenIn.address,
-                value: 0n,
-                data: encodeFunctionData({
-                    abi: ERC20_ABI,
-                    functionName: "approve",
-                    args: [v2Router, amountIn],
-                }),
-            });
-            actions.push({
-                target: v2Router,
-                value: 0n,
-                data: encodeFunctionData({
-                    abi: SWAP_EXACT_TOKENS_FOR_ETH_ABI,
-                    functionName: "swapExactTokensForETH",
-                    args: [amountIn, minOut, path, vault, deadline],
-                }),
-            });
         } else {
+            // ERC20 → ERC20 (or ERC20 → WBNB when user sells for BNB)
+            // Use SupportingFeeOnTransferTokens to handle taxed/meme tokens.
+            // Path is [Token, WBNB] for sells — WBNB lands in vault, functionally
+            // equivalent to native BNB and consistent with Runner behavior.
             actions.push({
                 target: tokenIn.address,
                 value: 0n,
@@ -156,8 +169,8 @@ export async function executeSwap(input: SwapInput) {
                 target: v2Router,
                 value: 0n,
                 data: encodeFunctionData({
-                    abi: SWAP_EXACT_TOKENS_ABI,
-                    functionName: "swapExactTokensForTokens",
+                    abi: SWAP_EXACT_TOKENS_FOR_TOKENS_FEE_ABI,
+                    functionName: "swapExactTokensForTokensSupportingFeeOnTransferTokens",
                     args: [amountIn, minOut, path, vault, deadline],
                 }),
             });

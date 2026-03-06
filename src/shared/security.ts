@@ -252,10 +252,14 @@ export function checkActionRecipientSafety(action: Action, vault: Address): Reci
 export function policyRejectionHelp(reason: string | undefined, tokenId: string): Record<string, string> {
     const consoleUrl = agentConsoleUrl(tokenId);
     const r = reason ?? "";
+    if (r.includes("Function not allowed"))
+        return { explanation: "The contract method selector is not enabled by the active DeFi policy configuration.", action: "Enable the required protocol pack or selector in Console > Safety, or use a supported transaction path.", consoleUrl };
     if (r.includes("Approve spender not allowed"))
         return { explanation: "The DEX router address is not in the approved spender whitelist.", action: "Contact the Agent owner to approve this router, or use a different DEX.", consoleUrl };
     if (r.includes("Target not allowed"))
         return { explanation: "The contract address is not in the DeFi target whitelist.", action: "Enable the corresponding DeFi Pack in Console > Safety, or contact the Agent owner.", consoleUrl };
+    if (r.includes("Receiver must be vault"))
+        return { explanation: "Swap output recipient must be the agent vault address enforced by ReceiverGuard.", action: "Retry with recipient/to set to the vault address, or use a supported flow that routes proceeds back to the vault.", consoleUrl };
     if (r.includes("Token not in whitelist"))
         return { explanation: "Token restriction is ON and this token is not whitelisted.", action: `Add the token to the whitelist or disable token restriction at: ${consoleUrl}`, consoleUrl };
     if (r.includes("Exceeds per-tx limit"))
