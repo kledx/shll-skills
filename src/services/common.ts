@@ -20,6 +20,7 @@ import {
     VTOKEN_ABI,
     WBNB_ABI,
 } from "../shared/index.js";
+import { DEFAULT_GUARD } from "../shared/constants.js";
 import { SkillError } from "../shared/errors.js";
 
 export function parseTokenId(tokenId: string): bigint {
@@ -53,7 +54,7 @@ export async function ensureAccess(tokenId: bigint, rpcUrl?: string, publicClien
             "ACCESS_DENIED",
             access.message || `Access denied for token_id ${tokenId.toString()}`,
             access.details,
-            "Check operator permissions and rental status",
+            "Check operator permissions and subscription status",
         );
     }
 }
@@ -81,6 +82,9 @@ export async function validateActionsOrThrow(
                 "POLICY_REJECTED",
                 "Policy rejected transaction",
                 {
+                    enforcement: "on-chain",
+                    policyGuardContract: DEFAULT_GUARD,
+                    verifyOnChain: `https://bscscan.com/address/${DEFAULT_GUARD}`,
                     failedActionIndex: index,
                     failedActionTarget: action.target,
                     failedActionSelector: getActionSelector(action),

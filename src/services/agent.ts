@@ -159,7 +159,7 @@ export async function getStatusOverview(tokenIdRaw: string, rpcUrl?: string) {
         : null;
     const access = await checkAccess(rpcUrl, tokenId, publicClient);
     const now = BigInt(Math.floor(Date.now() / 1000));
-    const rentalActive = now <= userExpires;
+    const subscriptionActive = now <= userExpires;
     const operatorAuthorizationActive = now <= operatorExpires;
     const runnerMatchesOperator = runnerAccount
         ? runnerAccount.address.toLowerCase() === operator.toLowerCase()
@@ -173,9 +173,9 @@ export async function getStatusOverview(tokenIdRaw: string, rpcUrl?: string) {
         nextActions.push("In OpenClaw, have AI set RUNNER_PRIVATE_KEY for the current session automatically.");
     }
 
-    if (!rentalActive) {
-        blockers.push(`Rental expired at ${new Date(Number(userExpires) * 1000).toISOString()}.`);
-        nextActions.push("Use the owner wallet on shll.run to renew the rental before trading.");
+    if (!subscriptionActive) {
+        blockers.push(`Subscription expired at ${new Date(Number(userExpires) * 1000).toISOString()}.`);
+        nextActions.push("Use the owner wallet on shll.run to renew the subscription before trading.");
     }
 
     if (!operatorAuthorizationActive) {
@@ -208,8 +208,8 @@ export async function getStatusOverview(tokenIdRaw: string, rpcUrl?: string) {
 
     const readinessStage = !runnerAccount
         ? "needs_session_key"
-        : !rentalActive
-            ? "needs_rental"
+        : !subscriptionActive
+            ? "needs_subscription"
             : !operatorAuthorizationActive || !runnerMatchesOperator
                 ? "needs_operator_authorization"
                 : opBalance !== null && opBalance < MIN_OPERATOR_GAS_WEI
@@ -250,10 +250,10 @@ export async function getStatusOverview(tokenIdRaw: string, rpcUrl?: string) {
             nextActions: dedupeStrings(nextActions),
         },
         walletModelReminder: {
-            ownerWallet: "Use your owner wallet to mint, rent, renew, and authorize the operator.",
+            ownerWallet: "Use your owner wallet to mint, subscribe, renew, and authorize the operator.",
             operatorWallet: "Use RUNNER_PRIVATE_KEY only as the AI hot wallet for gas and policy-limited execution.",
             doNotUseOperatorWalletFor: [
-                "minting or renting the agent",
+                "minting or subscribing to the agent",
                 "holding the Agent NFT",
                 "storing primary funds",
             ],
@@ -272,8 +272,8 @@ export async function getStatusOverview(tokenIdRaw: string, rpcUrl?: string) {
             recommendedMinGasBnb: "0.001",
         },
         access: {
-            rentalActive,
-            rentalExpiresAt: new Date(Number(userExpires) * 1000).toISOString(),
+            subscriptionActive,
+            subscriptionExpiresAt: new Date(Number(userExpires) * 1000).toISOString(),
             operatorAuthorizationActive,
             operatorAuthorizationExpiresAt: new Date(Number(operatorExpires) * 1000).toISOString(),
             runnerMatchesOperator,

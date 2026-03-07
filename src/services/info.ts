@@ -50,7 +50,7 @@ export async function getPortfolio(tokenIdRaw: string, rpcUrl?: string) {
 
     const now = BigInt(Math.floor(Date.now() / 1000));
     let accessStatus = "Active";
-    if (now > userExpires) accessStatus = "Rental Expired";
+    if (now > userExpires) accessStatus = "Subscription Expired";
     else if (now > operatorExpires) accessStatus = "Operator Auth Expired";
     else if (operator.toLowerCase() !== account.address.toLowerCase()) accessStatus = "Operator Mismatch";
 

@@ -14,7 +14,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import type { RecipientCheckResult } from "./types.js";
 
 /**
- * Pre-flight access check: verifies operator authorization and rental expiry.
+ * Pre-flight access check: verifies operator authorization and subscription expiry.
  * Returns a structured result that can be used by both CLI and MCP.
  * Accepts an optional publicClient to avoid creating a redundant one.
  */
@@ -24,7 +24,7 @@ export async function checkAccess(
     existingPublicClient?: any,
 ): Promise<{
     blocked: boolean;
-    errorType?: "rental_expired" | "operator_expired" | "unauthorized";
+    errorType?: "subscription_expired" | "operator_expired" | "unauthorized";
     message?: string;
     details?: Record<string, unknown>;
 }> {
@@ -56,8 +56,8 @@ export async function checkAccess(
     if (now > userExpires) {
         return {
             blocked: true,
-            errorType: "rental_expired",
-            message: `Agent token-id ${tokenId} rental has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}).`,
+            errorType: "subscription_expired",
+            message: `Agent token-id ${tokenId} subscription has EXPIRED (expired at ${new Date(Number(userExpires) * 1000).toISOString()}).`,
             details: { expiredAt: new Date(Number(userExpires) * 1000).toISOString(), action: "renew" },
         };
     }
@@ -89,7 +89,7 @@ export async function checkAccess(
                 consoleUrl: agentConsoleUrl(tokenId),
                 howToFix: [
                     `1. Use 'setup_guide' command to generate an OperatorPermit for this wallet`,
-                    `2. Renter (${renter}) can call setOperator(${tokenId}, ${account.address}, <expiry>) on AgentNFA`,
+                    `2. Subscriber (${renter}) can call setOperator(${tokenId}, ${account.address}, <expiry>) on AgentNFA`,
                     `3. Go to ${agentConsoleUrl(tokenId)} to set operator`,
                     `4. Use the correct RUNNER_PRIVATE_KEY for operator ${operator}`,
                 ],

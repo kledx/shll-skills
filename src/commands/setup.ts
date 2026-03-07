@@ -27,7 +27,7 @@ export function registerSetupCommands(program: Command) {
     const setupCmd = new Command("setup-guide")
         .description("Print dual-wallet setup instructions for a specific template")
         .option("-l, --listing <hex>", "Template listing ID")
-        .option("-d, --days <number>", "Number of days to rent", "7");
+        .option("-d, --days <number>", "Number of days to subscribe", "7");
     setupCmd.action(async (opts) => {
         try {
             const result = await buildSetupGuide(opts.listing, parseInt(opts.days, 10));
@@ -35,8 +35,8 @@ export function registerSetupCommands(program: Command) {
                 ...result,
                 steps: [
                     { step: 1, action: `Open ${result.setupUrl}` },
-                    { step: 2, action: "Use your owner wallet in the browser. Do not use the operator wallet for rental or mint." },
-                    { step: 3, action: "Confirm the rental or mint transaction in the owner wallet." },
+                    { step: 2, action: "Use your owner wallet in the browser. Do not use the operator wallet for subscription or mint." },
+                    { step: 3, action: "Confirm the subscription or mint transaction in the owner wallet." },
                     { step: 4, action: "Authorize the operator wallet for AI execution." },
                     { step: 5, action: "Fund the vault with BNB or trading tokens. Do not use the operator wallet as the vault wallet." },
                     { step: 6, action: "Send the token-id back to AI so it can automatically run readiness checks." },

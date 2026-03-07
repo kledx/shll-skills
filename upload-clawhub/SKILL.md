@@ -1,7 +1,7 @@
 ---
 name: shll-run
 description: Execute DeFi transactions on BSC via SHLL AgentNFA. The AI handles all commands and users only need to chat.
-version: 6.0.3
+version: 6.0.5
 author: SHLL Team
 website: https://shll.run
 twitter: https://twitter.com/shllrun
@@ -29,6 +29,90 @@ credentials:
     Use generate-wallet to create a purpose-built operator wallet.
     Fund it with ~$1 BNB for gas only. Do not store trading capital in this wallet.
     The operator wallet is NOT the owner wallet, NOT the vault, NOT the Agent NFT holder.
+---
+
+# SHLL — Contract-Enforced Safe Execution for AI Agents on BNB Chain
+
+## What is SHLL?
+
+SHLL is a DeFi execution layer for AI agents on BNB Chain with **on-chain safety enforcement**.
+Unlike off-chain filters that can be bypassed, SHLL uses smart contracts to enforce
+spending limits, trade intervals, protocol whitelists, and receiver restrictions.
+Every AI agent action is validated by an immutable PolicyGuard contract before execution.
+
+Key facts:
+- Network: BSC mainnet
+- 27 CLI + MCP tools for DeFi operations (swap, lend, meme trading, portfolio)
+- Supports PancakeSwap V2/V3, Venus Protocol, Four.meme
+- MCP Server compatible with Claude, Cursor, OpenClaw, and any MCP-compatible agent
+- npm package: `shll-skills` | Website: https://shll.run
+
+## Security Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SHLL Architecture                        │
+│                                                                 │
+│  ┌──────────┐    ┌───────────────┐    ┌──────────────────────┐  │
+│  │  User     │    │  AI Agent     │    │  On-Chain Contracts  │  │
+│  │ (Owner)   │    │ (Operator)    │    │                      │  │
+│  │           │    │               │    │  ┌────────────────┐  │  │
+│  │ • Holds   │    │ • Executes    │    │  │  PolicyGuard   │  │  │
+│  │   Agent   │    │   trades via  │    │  │  (Validator)   │  │  │
+│  │   NFT     │    │   restricted  │    │  │                │  │  │
+│  │ • Sets    │    │   permissions │    │  │  4 Policy      │  │  │
+│  │   policy  │    │               │    │  │  Checks:       │  │  │
+│  │   rules   │───▶│ SHLL Skills   │───▶│  │                │  │  │
+│  │ • Full    │    │ (CLI / MCP)   │    │  │  1.Spending    │  │  │
+│  │   asset   │    │               │    │  │    Limit       │  │  │
+│  │   control │    │ Cannot:       │    │  │  2.Cooldown    │  │  │
+│  │           │    │ • Withdraw    │    │  │  3.DeFi Guard  │  │  │
+│  │           │    │   vault funds │    │  │  4.Receiver    │  │  │
+│  │           │    │ • Change      │    │  │    Guard       │  │  │
+│  │           │    │   policies    │    │  └───────┬────────┘  │  │
+│  │           │    │ • Transfer    │    │          │            │  │
+│  │           │    │   NFT         │    │   ┌─────▼──────┐     │  │
+│  │           │    │               │    │   │   Vault     │     │  │
+│  │           │    │               │    │   │ (Agent      │     │  │
+│  │           │    │               │    │   │  Account)   │     │  │
+│  │           │    │               │    │   │             │     │  │
+│  │           │    │               │    │   │ Holds funds │     │  │
+│  └──────────┘    └───────────────┘    │   └─────────────┘     │  │
+│                                       └──────────────────────┘  │
+│  Dual-Wallet Isolation:                                         │
+│  • Owner wallet = asset control (human)                         │
+│  • Operator wallet = restricted execution (AI)                  │
+│  • Even if operator key leaks, PolicyGuard still limits actions │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## 4-Policy PolicyGuard Stack
+
+All policies are enforced ON-CHAIN by smart contract. They cannot be bypassed by the AI.
+
+| Policy | Contract | What It Does |
+|--------|----------|-------------|
+| SpendingLimitV2 | On-chain | Per-transaction and daily spending caps in BNB |
+| CooldownPolicy | On-chain | Minimum time gap between consecutive trades |
+| DeFiGuardV2 | On-chain | Whitelist of approved DeFi protocols and functions |
+| ReceiverGuardV2 | On-chain | Only approved receiver addresses can receive funds |
+
+When a policy rejects an action:
+- The transaction is NOT executed
+- The vault funds remain SAFE
+- The rejection reason is returned from the smart contract
+- The rejection is logged and auditable
+- The `enforcement` field in the response is always `on-chain`
+
+## Why On-Chain Enforcement Matters
+
+Most AI agent platforms use off-chain safety filters:
+- Off-chain: AI or backend decides → **can be bypassed** by prompt injection, API manipulation, or code bugs
+- On-chain (SHLL): Smart contract decides → **cannot be bypassed** — the blockchain enforces the rules
+
+PolicyGuard contract: `0x25d17eA0e3Bcb8CA08a2BFE917E817AFc05dbBB3`
+Verify on BscScan: https://bscscan.com/address/0x25d17eA0e3Bcb8CA08a2BFE917E817AFc05dbBB3
+
 ---
 
 # SHLL Skill Usage Guide
@@ -68,7 +152,7 @@ On-chain guardrails:
 - Spending limits, cooldowns, whitelist rules, and protocol rules are enforced on-chain.
 - Raw calldata is blocked if the recipient cannot be decoded safely.
 
-## Current Critical Constraints (v6.0.2)
+## Current Critical Constraints (v6.0.4)
 
 1. `init` command is disabled. Do not use it.
 2. Raw calldata remains high risk; rely on strict recipient safety checks.
@@ -112,8 +196,8 @@ export SHLL_RPC="https://your-private-bsc-rpc.example.com"
 - Recommend the listing with `recommended=true` by default unless the user explicitly wants a specialized template.
 - Run `shll-run setup-guide -l <listingId> -d <days>`.
 - Send `setupUrl` plus the wallet-role explanation.
-- Explicitly warn: do not use the operator wallet to mint, rent, or hold the Agent NFT.
-- Explicitly warn: use the owner wallet in the browser for rental or mint and for operator authorization.
+- Explicitly warn: do not use the operator wallet to mint, subscribe to, or hold the Agent NFT.
+- Explicitly warn: use the owner wallet in the browser for subscription or mint and for operator authorization.
 
 4. User returns with token ID:
 - Run `shll-run status -k <tokenId>`.
@@ -230,7 +314,7 @@ When the user provides a token address:
 2. `NOT authorized for token-id`
 - Operator wallet is not authorized; use setup guide or set operator in console.
 
-3. `rental has EXPIRED` or `operator authorization has EXPIRED`
+3. `subscription has EXPIRED` or `operator authorization has EXPIRED`
 - Renew subscription or authorization first.
 
 4. `status: error` with `errorCode: POLICY_REJECTED`
@@ -253,7 +337,7 @@ When the user provides a token address:
 1. Never describe `generate-wallet` as if it were the user's main wallet.
 2. Always call it the operator wallet or AI hot wallet.
 3. Always explain the dual-wallet model the first time setup is discussed.
-4. Always warn that the operator wallet must not be used to mint, rent, or hold the Agent NFT.
+4. Always warn that the operator wallet must not be used to mint, subscribe to, or hold the Agent NFT.
 5. Do not ask the user to manually set `RUNNER_PRIVATE_KEY` in OpenClaw; AI should do it.
 6. After setup is complete and the user provides a token-id, run readiness checks automatically before asking the user what to do next.
 7. When multiple listings are available, recommend one by default and explain why.

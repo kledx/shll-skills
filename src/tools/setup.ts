@@ -19,7 +19,7 @@ function asToolResult(payload: unknown) {
 export function registerSetupTools(server: McpServer) {
     server.tool(
         "listings",
-        "List all available agent templates for rent",
+        "List all available agent templates for subscription",
         {},
         async () => {
             try {
@@ -38,10 +38,10 @@ export function registerSetupTools(server: McpServer) {
 
     server.tool(
         "setup_guide",
-        "Generate step-by-step dual-wallet onboarding instructions. Owner wallet completes rental or mint; operator wallet is AI-only.",
+        "Generate step-by-step dual-wallet onboarding instructions. Owner wallet completes subscription or mint; operator wallet is AI-only.",
         {
             listing_id: CommonSchemas.listingId.optional(),
-            days: z.number().int().min(7).default(7).describe("Number of days to rent"),
+            days: z.number().int().min(7).default(7).describe("Number of days to subscribe"),
         },
         async ({ listing_id, days }) => {
             try {
@@ -51,7 +51,7 @@ export function registerSetupTools(server: McpServer) {
                     steps: [
                         { step: 1, title: "Open SHLL Setup Page", action: `Open ${result.setupUrl}` },
                         { step: 2, title: "Use Owner Wallet", action: "Use your main owner wallet in the browser. Do not use the operator wallet for this step." },
-                        { step: 3, title: "Rent or Mint Agent", action: "Confirm the rental or mint transaction in the owner wallet." },
+                        { step: 3, title: "Subscribe or Mint Agent", action: "Confirm the subscription or mint transaction in the owner wallet." },
                         { step: 4, title: "Authorize Operator", action: "Authorize the operator wallet for AI execution.", note: `Operator: ${result.operatorAddress}` },
                         { step: 5, title: "Fund Vault", action: "Deposit BNB or tokens into the vault for trading. Do not store primary assets in the operator wallet." },
                         { step: 6, title: "Return Token ID", action: "Send the token-id back to AI so it can automatically check operator gas, vault balance, and policy readiness." },

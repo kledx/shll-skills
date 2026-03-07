@@ -1,4 +1,4 @@
-﻿# SHLL Skills — AI Agent DeFi Toolkit on BSC
+# SHLL Skills — AI Agent DeFi Toolkit on BSC
 
 [![Website](https://img.shields.io/badge/Website-shll.run-blue)](https://shll.run) [![Twitter](https://img.shields.io/badge/Twitter-@shllrun-1DA1F2)](https://twitter.com/shllrun) [![npm](https://img.shields.io/npm/v/shll-skills)](https://www.npmjs.com/package/shll-skills) [![ClawHub](https://img.shields.io/badge/ClawHub-shll--skills-orange)](https://clawhub.ai/kledx/shll-skills)
 
@@ -85,7 +85,7 @@ The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to d
 | `status` | Read | One-shot readiness overview with blockers, warnings, and next actions |
 | `history` | Read | Recent transactions + policy rejections |
 | `token_restriction` | Read | View token whitelist restriction status + whitelisted tokens |
-| `listings` | Read | Available agent templates for rent |
+| `listings` | Read | Available agent templates for subscription |
 | `four_info` | Read | Query Four.meme bonding curve token info |
 | `swap` | Write | PancakeSwap V2/V3 auto-routing swap |
 | `wrap` | Write | BNB → WBNB in vault |
@@ -180,13 +180,13 @@ AI Agent -> CLI/MCP -> PolicyClient.validate() -> PolicyGuard (on-chain) -> vaul
 | | Owner Wallet | Operator Wallet (RUNNER_PRIVATE_KEY) |
 |---|---|---|
 | **Who holds it** | User (MetaMask/hardware) | AI agent |
-| **Use it for** | Rent or mint the agent, hold the Agent NFT, authorize operator | Pay gas and execute policy-limited actions |
+| **Use it for** | Subscribe or mint the agent, hold the Agent NFT, authorize operator | Pay gas and execute policy-limited actions |
 | **Can trade** | — | ✅ Within PolicyGuard limits |
 | **Can withdraw vault** | ✅ | ❌ |
 | **Can transfer NFT** | ✅ | ❌ |
 | **Risk if leaked** | 🚨 Full vault access | ⚠️ Limited to policy-allowed trades |
 
-Do not use the operator wallet to mint or rent the agent. Do not hold the Agent NFT in the operator wallet. Keep only a small BNB balance there for gas.
+Do not use the operator wallet to mint or subscribe to the agent. Do not hold the Agent NFT in the operator wallet. Keep only a small BNB balance there for gas.
 
 After setup, run `status` first. It returns a machine-friendly readiness object with:
 - `readiness.ready`

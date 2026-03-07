@@ -4,7 +4,7 @@
 
 A **CLI + MCP Server** toolkit that gives any AI agent the ability to execute DeFi operations on BSC Mainnet securely. Supports PancakeSwap V2/V3 swaps, Venus lending, Four.meme bonding curve trades, setup flows, and raw calldata execution through PolicyGuard.
 
-Version `6.0.2` finalizes the modular layout:
+Version `6.0.0` finalizes the modular layout:
 - `shared/*` for constants, clients, schemas, errors, ABIs, and cross-cutting helpers
 - `services/*` for single-source business logic
 - `commands/*` and `tools/*` as thin CLI/MCP adapters
@@ -85,7 +85,7 @@ The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to d
 | `status` | Read | One-shot readiness overview with blockers, warnings, and next actions |
 | `history` | Read | Recent transactions + policy rejections |
 | `token_restriction` | Read | View token whitelist restriction status + whitelisted tokens |
-| `listings` | Read | Available agent templates for rent |
+| `listings` | Read | Available agent templates for subscription |
 | `four_info` | Read | Query Four.meme bonding curve token info |
 | `swap` | Write | PancakeSwap V2/V3 auto-routing swap |
 | `wrap` | Write | BNB → WBNB in vault |
@@ -95,7 +95,7 @@ The server communicates via **stdio** using JSON-RPC 2.0. Send `tools/list` to d
 | `transfer` | Write | Send BNB or ERC20 from vault |
 | `four_buy` | Write | Buy a Four.meme bonding-curve token |
 | `four_sell` | Write | Sell a Four.meme bonding-curve token |
-| `config` | Read | View current risk parameters and get a link to the web console for modifications |
+| `config` | Write | Configure risk parameters (spending limits, cooldown) |
 | `setup_guide` | Info | Generate dual-wallet onboarding URL + steps |
 | `generate_wallet` | Info | Create new operator wallet (not the owner, mint, or vault wallet) |
 | `execute_calldata` | Write | Execute raw calldata from any source through PolicyGuard |
@@ -159,7 +159,7 @@ shll-run four_info --token <ADDR> # Four.meme token status
 ```bash
 shll-run policies -k <ID>         # View active on-chain policies
 shll-run status -k <ID>           # Readiness, blockers, warnings, next actions
-shll-run config -k <ID>           # View current config (modify via web console)
+shll-run config -k <ID> --tx-limit <BNB> --daily-limit <BNB> --cooldown <SEC>
 ```
 
 ---
@@ -180,13 +180,13 @@ AI Agent -> CLI/MCP -> PolicyClient.validate() -> PolicyGuard (on-chain) -> vaul
 | | Owner Wallet | Operator Wallet (RUNNER_PRIVATE_KEY) |
 |---|---|---|
 | **Who holds it** | User (MetaMask/hardware) | AI agent |
-| **Use it for** | Rent or mint the agent, hold the Agent NFT, authorize operator | Pay gas and execute policy-limited actions |
+| **Use it for** | Subscribe or mint the agent, hold the Agent NFT, authorize operator | Pay gas and execute policy-limited actions |
 | **Can trade** | — | ✅ Within PolicyGuard limits |
 | **Can withdraw vault** | ✅ | ❌ |
 | **Can transfer NFT** | ✅ | ❌ |
 | **Risk if leaked** | 🚨 Full vault access | ⚠️ Limited to policy-allowed trades |
 
-Do not use the operator wallet to mint or rent the agent. Do not hold the Agent NFT in the operator wallet. Keep only a small BNB balance there for gas.
+Do not use the operator wallet to mint or subscribe to the agent. Do not hold the Agent NFT in the operator wallet. Keep only a small BNB balance there for gas.
 
 After setup, run `status` first. It returns a machine-friendly readiness object with:
 - `readiness.ready`

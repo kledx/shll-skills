@@ -78,14 +78,14 @@ export async function buildSetupGuide(listingId?: string, days = 7) {
         walletModel: {
             type: "dual_wallet",
             ownerWallet: {
-                purpose: "Rent or mint the agent, own the Agent NFT, authorize the operator, and hold primary assets.",
-                useFor: ["renting or minting the agent", "holding ownership", "authorizing the operator"],
+                purpose: "Subscribe or mint the agent, own the Agent NFT, authorize the operator, and hold primary assets.",
+                useFor: ["subscribing to or minting the agent", "holding ownership", "authorizing the operator"],
             },
             operatorWallet: {
                 purpose: "AI-only hot wallet used for gas and policy-limited execution.",
                 useFor: ["paying gas", "executing policy-limited trades"],
                 doNotUseFor: [
-                    "minting or renting the agent",
+                    "minting or subscribing to the agent",
                     "holding the Agent NFT",
                     "using as your main asset wallet",
                 ],
@@ -93,8 +93,8 @@ export async function buildSetupGuide(listingId?: string, days = 7) {
             },
         },
         criticalWarnings: [
-            "Do not use the operator wallet to mint, rent, or hold the Agent NFT.",
-            "Use your owner wallet in the browser to complete rental and operator authorization.",
+            "Do not use the operator wallet to mint, subscribe to, or hold the Agent NFT.",
+            "Use your owner wallet in the browser to complete subscription and operator authorization.",
             "Keep only a small BNB balance in the operator wallet for gas.",
         ],
         listingSelection: {
@@ -130,7 +130,7 @@ export function generateOperatorWallet() {
         securityModel: "dual_wallet",
         safeIfLeaked: "This is not the owner wallet. A leak does not grant unrestricted vault withdrawal because owner permissions stay on the owner wallet and PolicyGuard still limits operator actions.",
         doNotUseFor: [
-            "minting or renting the agent",
+            "minting or subscribing to the agent",
             "holding the Agent NFT",
             "holding your main assets",
         ],
